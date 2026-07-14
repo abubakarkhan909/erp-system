@@ -1,0 +1,25 @@
+export const NAV_ITEMS = [
+  { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard' },
+  { label: 'Customers', href: '/customers', icon: 'Users' },
+  { label: 'Suppliers', href: '/suppliers', icon: 'Truck' },
+  { label: 'Products', href: '/products', icon: 'Gem' },
+  { label: 'Gold Rates', href: '/gold-rates', icon: 'TrendingUp' },
+  { label: 'Sales', href: '/sales', icon: 'Receipt' },
+  { label: 'Purchases', href: '/purchases', icon: 'ShoppingCart' },
+  { label: 'Inventory', href: '/inventory', icon: 'Package' },
+  { label: 'Cash', href: '/cash', icon: 'Banknote' },
+  { label: 'Banks', href: '/banks', icon: 'Landmark' },
+  { label: 'Expenses', href: '/expenses', icon: 'Wallet' },
+  { label: 'VAT', href: '/vat', icon: 'Percent' },
+  { label: 'Accounting', href: '/accounting', icon: 'BookOpen' },
+  { label: 'Reports', href: '/reports', icon: 'BarChart3' },
+  { label: 'Advances', href: '/advances', icon: 'Clock' },
+  { label: 'Installments', href: '/installments', icon: 'CalendarClock' },
+  { label: 'Notifications', href: '/notifications', icon: 'Bell' },
+  { label: 'Users', href: '/users', icon: 'UserCog' },
+  { label: 'Settings', href: '/settings', icon: 'Settings' },
+  { label: 'Audit', href: '/audit', icon: 'Shield' },
+  { label: 'Backup', href: '/backup', icon: 'Database' },
+] as const;
+
+export type NavIcon = (typeof NAV_ITEMS)[number]['icon'];

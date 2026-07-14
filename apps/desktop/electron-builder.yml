@@ -1,0 +1,43 @@
+appId: com.almas.jewelryerp
+productName: Al Mas Jewelry ERP
+copyright: Copyright © Al Mas Jewelry
+
+directories:
+  output: release
+  buildResources: build
+
+afterPack: ./afterPack.cjs
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: pack-stage/api
+    to: api
+    filter:
+      - "**/*"
+      - "!node_modules/**"
+  - from: pack-stage/web
+    to: web
+    filter:
+      - "**/*"
+      - "!node_modules/**"
+  - from: pack-stage/SETUP.txt
+    to: SETUP.txt
+  - from: pack-stage/CLIENT-INSTALL.txt
+    to: CLIENT-INSTALL.txt
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-Setup.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Al Mas Jewelry ERP

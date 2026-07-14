@@ -1,0 +1,25 @@
+{
+  "name": "@jewelry-erp/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electron desktop shell for Al Mas Jewelry ERP",
+  "main": "dist/main.js",
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "prestart": "pnpm compile",
+    "predev": "pnpm compile",
+    "prebuild": "pnpm compile",
+    "dev": "concurrently -k \"tsc -p tsconfig.json --watch\" \"wait-on http://127.0.0.1:3000 && node scripts/run-electron-dev.cjs\"",
+    "build": "electron-builder",
+    "start": "electron .",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.32",
+    "concurrently": "^9.2.0",
+    "electron": "^36.5.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.8.3",
+    "wait-on": "^8.0.3"
+  }
+}

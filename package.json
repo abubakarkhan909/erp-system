@@ -1,0 +1,29 @@
+{
+  "name": "jewelry-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gold/Jewelry Shop ERP for Oman (OMR) — Electron + Next.js + NestJS",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:api": "pnpm --filter @jewelry-erp/api dev",
+    "dev:web": "pnpm --filter @jewelry-erp/web dev",
+    "dev:desktop": "pnpm --filter @jewelry-erp/desktop dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @jewelry-erp/api prisma:generate",
+    "db:migrate": "pnpm --filter @jewelry-erp/api prisma:migrate",
+    "db:seed": "pnpm --filter @jewelry-erp/api prisma:seed",
+    "db:seed-demo": "pnpm --filter @jewelry-erp/api prisma:seed-demo",
+    "db:studio": "pnpm --filter @jewelry-erp/api prisma:studio",
+    "package:win": "node scripts/package-windows.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  }
+}
