@@ -1,5 +1,6 @@
 /**
  * Build Windows installer without Next standalone (avoids Windows symlink EPERM).
+ * Ships local SQLite — no MySQL/XAMPP on the client PC.
  */
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -39,47 +40,92 @@ function writeSharedVendor(targetRoot) {
   );
 }
 
-const CLIENT_INSTALL = `Al Mas Jewelry ERP — Install on client PC
+/** Drop build caches and non-Windows Prisma engines to shrink the installer. */
+function slimStage(apiStage, webStage) {
+  const drop = [
+    path.join(webStage, '.next', 'cache'),
+    path.join(webStage, '.next', 'trace'),
+    path.join(apiStage, 'node_modules', '.cache'),
+    path.join(webStage, 'node_modules', '.cache'),
+    path.join(apiStage, 'prisma', 'data'),
+  ];
+  for (const p of drop) {
+    if (fs.existsSync(p)) {
+      console.log(`[slim] remove ${path.relative(stageDir, p)}`);
+      rimraf(p);
+    }
+  }
+
+  // Keep only Windows Prisma query/schema engines
+  const engineJunk =
+    /query_engine-(darwin|linux|debian|rhel|openssl)|libquery_engine-(darwin|linux)|schema-engine-(darwin|linux)/i;
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      let st;
+      try {
+        st = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(full);
+      } else if (engineJunk.test(name)) {
+        console.log(`[slim] remove engine ${name}`);
+        fs.unlinkSync(full);
+      }
+    }
+  };
+  walk(path.join(apiStage, 'node_modules'));
+}
+
+const CLIENT_INSTALL = `Al Zahid Jewelry ERP — Install on client PC
 ========================================
 
 Give the client ONLY this file:
-  Al Mas Jewelry ERP-1.0.0-Setup.exe
+  Al Zahid Jewelry ERP-1.0.0-Setup.exe
 
-BEFORE installing the ERP (once on that PC)
-------------------------------------------
-1) Install XAMPP (or MySQL 8) and START MySQL
-   https://www.apachefriends.org/
+No MySQL / XAMPP / Node.js needed.
+Data is stored locally as SQLite under:
+  %APPDATA%\\Al Zahid Jewelry ERP\\data\\jewelry.db
 
-2) Open phpMyAdmin → create database named:  esp_shop
-   (empty database is fine)
-
-3) Install Al Mas Jewelry ERP-1.0.0-Setup.exe
+Install steps
+-------------
+1) Run Al Zahid Jewelry ERP-1.0.0-Setup.exe
    (Desktop shortcut will be created)
 
-4) Open "Al Mas Jewelry ERP" from the Desktop
-   - First launch creates config automatically
-   - First launch creates tables + owner login
+2) Open "Al Zahid Jewelry ERP" from the Desktop
+   - First launch creates local database + owner login
 
-5) Login:
-   Username: owner
-   Password: Owner@12345
+3) Login:
+   Username: admin
+   Password: admin@1234
 
-CHANGE THE OWNER PASSWORD after first login (Users tab).
+   (also available)
+   Username: zahid
+   Password: zahid@1234
 
-If MySQL root has a password, edit:
-  %APPDATA%\\Al Mas Jewelry ERP\\.env
-and set:
-  DATABASE_URL="mysql://root:YOURPASSWORD@127.0.0.1:3306/esp_shop"
-Then delete the file:
-  %APPDATA%\\Al Mas Jewelry ERP\\.db-ready
-and open the app again.
+CHANGE THE ADMIN PASSWORD after first login (Users tab).
 
-Node.js is NOT required on the client PC (bundled).
-MySQL / XAMPP IS required.
+Backup (important)
+------------------
+Use Backup in the app to copy the database file, then Download it to a USB drive.
+If the PC dies, Restore that .db backup (or copy jewelry.db back into the AppData folder).
+
+If first launch fails
+---------------------
+Delete this file and open the app again:
+  %APPDATA%\\Al Zahid Jewelry ERP\\.db-ready
 `;
 
 function main() {
-  console.log('=== Packaging Al Mas Jewelry ERP (Windows) ===');
+  console.log('=== Packaging Al Zahid Jewelry ERP (Windows / SQLite) ===');
+
+  // Avoid stale incremental TS emit (previously shipped nearly empty API → health timeout)
+  rimraf(path.join(apiDir, 'dist'));
+  const tsbuildinfo = path.join(apiDir, 'tsconfig.build.tsbuildinfo');
+  if (fs.existsSync(tsbuildinfo)) fs.unlinkSync(tsbuildinfo);
 
   run('pnpm --filter @jewelry-erp/shared build');
   try {
@@ -98,9 +144,63 @@ function main() {
   fs.mkdirSync(apiStage, { recursive: true });
   fs.mkdirSync(webStage, { recursive: true });
 
-  // API
-  copyDir(path.join(apiDir, 'dist'), apiStage);
+  // API — Nest should emit flat dist/main.js; if legacy dist/src exists, flatten it.
+  const apiDist = path.join(apiDir, 'dist');
+  const nestedDistMain = path.join(apiDist, 'src', 'main.js');
+  const flatDistMain = path.join(apiDist, 'main.js');
+  if (fs.existsSync(nestedDistMain) && !fs.existsSync(flatDistMain)) {
+    console.log('[stage] flattening dist/src → pack-stage/api');
+    copyDir(path.join(apiDist, 'src'), apiStage);
+  } else {
+    copyDir(apiDist, apiStage);
+  }
+
+  // Hard fail if Nest emit is incomplete (same class of bug that caused client API timeout)
+  const healthJs = [
+    path.join(apiStage, 'modules', 'health', 'health.controller.js'),
+    path.join(apiStage, 'src', 'modules', 'health', 'health.controller.js'),
+  ].find((p) => fs.existsSync(p));
+  const appModuleJs = [
+    path.join(apiStage, 'app.module.js'),
+    path.join(apiStage, 'src', 'app.module.js'),
+  ].find((p) => fs.existsSync(p));
+  const mainJs = [
+    path.join(apiStage, 'main.js'),
+    path.join(apiStage, 'src', 'main.js'),
+  ].find((p) => fs.existsSync(p));
+  if (!mainJs || !appModuleJs || !healthJs) {
+    throw new Error(
+      `[stage] Incomplete API build — missing entry/modules (main=${!!mainJs}, app.module=${!!appModuleJs}, health=${!!healthJs}). ` +
+        'Clean apps/api/dist and rebuild.',
+    );
+  }
+  const moduleCount = fs.existsSync(path.join(apiStage, 'modules'))
+    ? fs.readdirSync(path.join(apiStage, 'modules')).length
+    : fs.existsSync(path.join(apiStage, 'src', 'modules'))
+      ? fs.readdirSync(path.join(apiStage, 'src', 'modules')).length
+      : 0;
+  if (moduleCount < 10) {
+    throw new Error(`[stage] API modules look incomplete (count=${moduleCount}). Aborting package.`);
+  }
+  console.log(`[stage] API OK — modules=${moduleCount}, health present`);
+
   copyDir(path.join(apiDir, 'prisma'), path.join(apiStage, 'prisma'));
+  // Do not ship local junk / dev databases inside prisma/
+  rimraf(path.join(apiStage, 'prisma', 'data'));
+  for (const junk of ['jewelry.db', 'jewelry.db-journal', 'dev.db']) {
+    const p = path.join(apiStage, 'prisma', junk);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  }
+  const ownershipMig = path.join(
+    apiStage,
+    'prisma',
+    'migrations',
+    '20260720180000_product_ownership',
+    'migration.sql',
+  );
+  if (!fs.existsSync(ownershipMig)) {
+    throw new Error('[stage] Missing product_ownership migration in staged prisma/');
+  }
   fs.copyFileSync(path.join(apiDir, 'package.json'), path.join(apiStage, 'package.json'));
   fs.copyFileSync(path.join(apiDir, '.env.example'), path.join(apiStage, '.env.example'));
   writeSharedVendor(apiStage);
@@ -128,6 +228,8 @@ function main() {
     fs.copyFileSync(path.join(webDir, 'next.config.ts'), path.join(webStage, 'next.config.ts'));
   }
   copyDir(path.join(webDir, '.next'), path.join(webStage, '.next'));
+  // Largest easy win: Next build cache is useless at runtime (~300MB+)
+  rimraf(path.join(webStage, '.next', 'cache'));
   if (fs.existsSync(path.join(webDir, 'public'))) {
     copyDir(path.join(webDir, 'public'), path.join(webStage, 'public'));
   }
@@ -142,6 +244,8 @@ function main() {
   );
   run('npm install --omit=dev', webStage);
 
+  slimStage(apiStage, webStage);
+
   fs.writeFileSync(path.join(stageDir, 'CLIENT-INSTALL.txt'), CLIENT_INSTALL);
   fs.writeFileSync(path.join(stageDir, 'SETUP.txt'), CLIENT_INSTALL);
 
@@ -153,13 +257,13 @@ function main() {
     .readdirSync(releaseDir)
     .find((f) => f.endsWith('-Setup.exe'));
   console.log('\n========================================');
-  console.log('CLIENT INSTALLER READY');
+  console.log('CLIENT INSTALLER READY (SQLite — no MySQL)');
   if (setup) {
     console.log(path.join(releaseDir, setup));
   } else {
     console.log(releaseDir);
   }
-  console.log('Give the client: Setup.exe + CLIENT-INSTALL.txt instructions');
+  console.log('Give the client: Setup.exe only');
   console.log('========================================\n');
 }
 

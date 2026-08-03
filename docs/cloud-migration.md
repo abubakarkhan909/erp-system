@@ -4,7 +4,7 @@ Goal: deploy the same NestJS + Next.js apps online with minimal domain-code chan
 
 ## Steps
 
-1. **Database** — Dump local MySQL; restore to managed MySQL (RDS/Cloud SQL/DigitalOcean). Update `DATABASE_URL`.
+1. **Database** — Export local SQLite (or use a SQL dump tool), restore to managed Postgres/MySQL (RDS/Cloud SQL/DigitalOcean). Point Prisma `provider` + `DATABASE_URL` at the cloud database.
 2. **API** — Deploy `apps/api` to a Node host / container. Set JWT secrets, `UPLOAD_DIR` or object storage.
 3. **Storage adapter** — Replace local disk `AttachmentsService` paths with S3-compatible `StorageService` implementation (interface already isolated under attachments/backups).
 4. **Web** — Deploy `apps/web` to Vercel/Node. Set `NEXT_PUBLIC_API_URL` to public API HTTPS URL.

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -46,6 +47,12 @@ export class SalesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.salesService.updateDraft(id, body, user.id);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('sales.write')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.salesService.deleteDraft(id, user.id);
   }
 
   @Post(':id/post')

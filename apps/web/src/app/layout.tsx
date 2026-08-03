@@ -20,9 +20,20 @@ export const metadata: Metadata = {
   description: 'Gold & jewelry shop ERP for Oman (OMR)',
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const apiPort = process.env.API_PORT || '3847';
+
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__API_PORT__ = ${JSON.stringify(apiPort)};`,
+          }}
+        />
+      </head>
       <body className={`${dmSans.variable} ${sourceSerif.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
       </body>

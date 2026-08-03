@@ -1,4 +1,4 @@
-# Al Mas Jewelry ERP — Desktop
+# Al Zahid Jewelry ERP — Desktop
 
 Electron shell for the Jewelry ERP web UI and local NestJS API.
 
@@ -6,23 +6,20 @@ Electron shell for the Jewelry ERP web UI and local NestJS API.
 
 - Node.js 20+
 - pnpm 9+
-- MySQL running locally with the database configured in `apps/api/.env`
+- SQLite via Prisma (created automatically — no MySQL)
 
 ## Local development
 
 Run each service in its own terminal from the repository root:
 
 ```bash
-# 1. Start MySQL (example — adjust for your install)
-# Windows service, Docker, or local mysqld
-
-# 2. API (NestJS on http://127.0.0.1:3847)
+# 1. API (NestJS on http://127.0.0.1:3847) — uses apps/api/data/jewelry.db
 pnpm dev:api
 
-# 3. Web (Next.js on http://127.0.0.1:3000)
+# 2. Web (Next.js on http://127.0.0.1:3000)
 pnpm dev:web
 
-# 4. Desktop (waits for the web dev server, then opens Electron)
+# 3. Desktop (waits for the web dev server, then opens Electron)
 pnpm dev:desktop
 ```
 
@@ -55,12 +52,9 @@ The renderer can call:
 
 ## Production build
 
-Build the web static export and API first, then package the desktop app:
-
 ```bash
-pnpm --filter @jewelry-erp/web build
-pnpm --filter @jewelry-erp/api build
-pnpm --filter @jewelry-erp/desktop build
+pnpm package:win
 ```
 
-Installers are written to `apps/desktop/release/`.
+Installer: `apps/desktop/release/Al Zahid Jewelry ERP-*-Setup.exe`  
+Client PCs need **only** that Setup.exe (SQLite is created on first launch).

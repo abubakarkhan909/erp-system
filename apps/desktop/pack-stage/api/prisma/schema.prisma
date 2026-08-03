@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -48,6 +48,11 @@ enum StockMode {
   PIECE
   WEIGHT
   BOTH
+}
+
+enum ProductOwnership {
+  OWN
+  SUPPLIER
 }
 
 enum StockMovementType {
@@ -140,15 +145,15 @@ model Company {
   id              String   @id @default(cuid())
   name            String
   logoPath        String?
-  address         String?  @db.Text
+  address         String? 
   phone           String?
   email           String?
   crNumber        String?
   vatNumber       String?
   currency        String   @default("OMR")
-  defaultVatRate  Decimal  @default(5.000) @db.Decimal(18, 3)
+  defaultVatRate  Decimal  @default(5.000)
   invoicePrefix   String   @default("INV")
-  receiptFooter   String?  @db.Text
+  receiptFooter   String? 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -279,11 +284,11 @@ model Customer {
   name            String
   phone           String?
   email           String?
-  address         String?   @db.Text
+  address         String?  
   civilId         String?
-  openingBalance  Decimal   @default(0.000) @db.Decimal(18, 3)
-  currentBalance  Decimal   @default(0.000) @db.Decimal(18, 3)
-  notes           String?   @db.Text
+  openingBalance  Decimal   @default(0.000)
+  currentBalance  Decimal   @default(0.000)
+  notes           String?  
   deletedAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -307,11 +312,11 @@ model Supplier {
   name            String
   phone           String?
   email           String?
-  address         String?   @db.Text
+  address         String?  
   tradeLicense    String?
-  openingBalance  Decimal   @default(0.000) @db.Decimal(18, 3)
-  currentBalance  Decimal   @default(0.000) @db.Decimal(18, 3)
-  notes           String?   @db.Text
+  openingBalance  Decimal   @default(0.000)
+  currentBalance  Decimal   @default(0.000)
+  notes           String?  
   deletedAt       DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -350,23 +355,24 @@ model Product {
   sku            String        @unique
   barcode        String?       @unique
   name           String
-  description    String?       @db.Text
+  description    String?      
   imagePath      String?
   categoryId     String?
   brandId        String?
-  productType    ProductType   @default(FINISHED)
-  stockMode      StockMode     @default(BOTH)
+  productType    ProductType      @default(FINISHED)
+  stockMode      StockMode        @default(BOTH)
+  ownership      ProductOwnership @default(SUPPLIER)
   purityKarat    GoldKarat?
-  grossWeight    Decimal       @default(0.000) @db.Decimal(18, 3)
-  netWeight      Decimal       @default(0.000) @db.Decimal(18, 3)
-  stoneWeight    Decimal       @default(0.000) @db.Decimal(18, 3)
-  makingCharges  Decimal       @default(0.000) @db.Decimal(18, 3)
-  stoneCharges   Decimal       @default(0.000) @db.Decimal(18, 3)
-  vatRate        Decimal?      @db.Decimal(18, 3)
-  purchasePrice  Decimal       @default(0.000) @db.Decimal(18, 3)
-  sellingPrice   Decimal       @default(0.000) @db.Decimal(18, 3)
-  minStockQty    Decimal       @default(0) @db.Decimal(18, 3)
-  minStockWeight Decimal       @default(0.000) @db.Decimal(18, 3)
+  grossWeight    Decimal       @default(0.000)
+  netWeight      Decimal       @default(0.000)
+  stoneWeight    Decimal       @default(0.000)
+  makingCharges  Decimal       @default(0.000)
+  stoneCharges   Decimal       @default(0.000)
+  vatRate        Decimal?     
+  purchasePrice  Decimal       @default(0.000)
+  sellingPrice   Decimal       @default(0.000)
+  minStockQty    Decimal       @default(0)
+  minStockWeight Decimal       @default(0.000)
   status         ProductStatus @default(ACTIVE)
   deletedAt      DateTime?
   createdAt      DateTime      @default(now())
@@ -387,9 +393,9 @@ model Product {
 
 model GoldRate {
   id          String    @id @default(cuid())
-  rateDate    DateTime  @db.Date
+  rateDate    DateTime 
   karat       GoldKarat
-  ratePerGram Decimal   @db.Decimal(18, 3)
+  ratePerGram Decimal  
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   createdById String?
@@ -401,12 +407,12 @@ model GoldRate {
 model StockBalance {
   id             String  @id @default(cuid())
   productId      String  @unique
-  onHandQty      Decimal @default(0) @db.Decimal(18, 3)
-  onHandWeight   Decimal @default(0.000) @db.Decimal(18, 3)
-  reservedQty    Decimal @default(0) @db.Decimal(18, 3)
-  reservedWeight Decimal @default(0.000) @db.Decimal(18, 3)
-  damagedQty     Decimal @default(0) @db.Decimal(18, 3)
-  damagedWeight  Decimal @default(0.000) @db.Decimal(18, 3)
+  onHandQty      Decimal @default(0)
+  onHandWeight   Decimal @default(0.000)
+  reservedQty    Decimal @default(0)
+  reservedWeight Decimal @default(0.000)
+  damagedQty     Decimal @default(0)
+  damagedWeight  Decimal @default(0.000)
   updatedAt      DateTime @updatedAt
 
   product Product @relation(fields: [productId], references: [id])
@@ -416,8 +422,8 @@ model StockMovement {
   id        String            @id @default(cuid())
   productId String
   type      StockMovementType
-  qty       Decimal           @default(0) @db.Decimal(18, 3)
-  weight    Decimal           @default(0.000) @db.Decimal(18, 3)
+  qty       Decimal           @default(0)
+  weight    Decimal           @default(0.000)
   refType   String?
   refId     String?
   notes     String?
@@ -436,14 +442,14 @@ model SaleInvoice {
   customerId   String?
   invoiceDate  DateTime       @default(now())
   status       DocumentStatus @default(DRAFT)
-  subtotal     Decimal        @default(0.000) @db.Decimal(18, 3)
-  discount     Decimal        @default(0.000) @db.Decimal(18, 3)
-  taxable      Decimal        @default(0.000) @db.Decimal(18, 3)
-  vatAmount    Decimal        @default(0.000) @db.Decimal(18, 3)
-  total        Decimal        @default(0.000) @db.Decimal(18, 3)
-  paid         Decimal        @default(0.000) @db.Decimal(18, 3)
-  balance      Decimal        @default(0.000) @db.Decimal(18, 3)
-  notes        String?        @db.Text
+  subtotal     Decimal        @default(0.000)
+  discount     Decimal        @default(0.000)
+  taxable      Decimal        @default(0.000)
+  vatAmount    Decimal        @default(0.000)
+  total        Decimal        @default(0.000)
+  paid         Decimal        @default(0.000)
+  balance      Decimal        @default(0.000)
+  notes        String?       
   postedAt     DateTime?
   voidedAt     DateTime?
   deletedAt    DateTime?
@@ -468,20 +474,20 @@ model SaleInvoiceItem {
   id                String     @id @default(cuid())
   saleInvoiceId     String
   productId         String
-  quantity          Decimal    @db.Decimal(18, 3)
-  grossWeight       Decimal    @default(0.000) @db.Decimal(18, 3)
-  netWeight         Decimal    @default(0.000) @db.Decimal(18, 3)
-  stoneWeight       Decimal    @default(0.000) @db.Decimal(18, 3)
+  quantity          Decimal   
+  grossWeight       Decimal    @default(0.000)
+  netWeight         Decimal    @default(0.000)
+  stoneWeight       Decimal    @default(0.000)
   karat             GoldKarat?
-  goldRateSnapshot  Decimal    @default(0.000) @db.Decimal(18, 3)
-  unitPrice         Decimal    @default(0.000) @db.Decimal(18, 3)
-  makingCharges     Decimal    @default(0.000) @db.Decimal(18, 3)
-  stoneCharges      Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineDiscount      Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineNet           Decimal    @default(0.000) @db.Decimal(18, 3)
-  vatRate           Decimal    @default(5.000) @db.Decimal(18, 3)
-  vatAmount         Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineTotal         Decimal    @default(0.000) @db.Decimal(18, 3)
+  goldRateSnapshot  Decimal    @default(0.000)
+  unitPrice         Decimal    @default(0.000)
+  makingCharges     Decimal    @default(0.000)
+  stoneCharges      Decimal    @default(0.000)
+  lineDiscount      Decimal    @default(0.000)
+  lineNet           Decimal    @default(0.000)
+  vatRate           Decimal    @default(5.000)
+  vatAmount         Decimal    @default(0.000)
+  lineTotal         Decimal    @default(0.000)
 
   saleInvoice SaleInvoice @relation(fields: [saleInvoiceId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
@@ -493,12 +499,12 @@ model SalePayment {
   id              String        @id @default(cuid())
   saleInvoiceId   String
   method          PaymentMethod
-  amount          Decimal       @db.Decimal(18, 3)
+  amount          Decimal      
   bankAccountId   String?
   reference       String?
   chequeNo        String?
   chequeBankName  String?
-  chequeDueDate   DateTime?     @db.Date
+  chequeDueDate   DateTime?    
   chequeStatus    ChequeStatus?
   idempotencyKey  String?       @unique
   createdAt       DateTime      @default(now())
@@ -517,11 +523,11 @@ model SaleReturn {
   customerId      String?
   returnDate      DateTime       @default(now())
   status          DocumentStatus @default(DRAFT)
-  taxable         Decimal        @default(0.000) @db.Decimal(18, 3)
-  vatAmount       Decimal        @default(0.000) @db.Decimal(18, 3)
-  total           Decimal        @default(0.000) @db.Decimal(18, 3)
-  refundAmount    Decimal        @default(0.000) @db.Decimal(18, 3)
-  notes           String?        @db.Text
+  taxable         Decimal        @default(0.000)
+  vatAmount       Decimal        @default(0.000)
+  total           Decimal        @default(0.000)
+  refundAmount    Decimal        @default(0.000)
+  notes           String?       
   postedAt        DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -538,12 +544,12 @@ model SaleReturnItem {
   id            String  @id @default(cuid())
   saleReturnId  String
   productId     String
-  quantity      Decimal @db.Decimal(18, 3)
-  netWeight     Decimal @default(0.000) @db.Decimal(18, 3)
-  lineNet       Decimal @default(0.000) @db.Decimal(18, 3)
-  vatRate       Decimal @default(5.000) @db.Decimal(18, 3)
-  vatAmount     Decimal @default(0.000) @db.Decimal(18, 3)
-  lineTotal     Decimal @default(0.000) @db.Decimal(18, 3)
+  quantity      Decimal
+  netWeight     Decimal @default(0.000)
+  lineNet       Decimal @default(0.000)
+  vatRate       Decimal @default(5.000)
+  vatAmount     Decimal @default(0.000)
+  lineTotal     Decimal @default(0.000)
 
   saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
 
@@ -556,14 +562,14 @@ model PurchaseInvoice {
   supplierId   String
   invoiceDate  DateTime       @default(now())
   status       DocumentStatus @default(DRAFT)
-  subtotal     Decimal        @default(0.000) @db.Decimal(18, 3)
-  discount     Decimal        @default(0.000) @db.Decimal(18, 3)
-  taxable      Decimal        @default(0.000) @db.Decimal(18, 3)
-  vatAmount    Decimal        @default(0.000) @db.Decimal(18, 3)
-  total        Decimal        @default(0.000) @db.Decimal(18, 3)
-  paid         Decimal        @default(0.000) @db.Decimal(18, 3)
-  balance      Decimal        @default(0.000) @db.Decimal(18, 3)
-  notes        String?        @db.Text
+  subtotal     Decimal        @default(0.000)
+  discount     Decimal        @default(0.000)
+  taxable      Decimal        @default(0.000)
+  vatAmount    Decimal        @default(0.000)
+  total        Decimal        @default(0.000)
+  paid         Decimal        @default(0.000)
+  balance      Decimal        @default(0.000)
+  notes        String?       
   postedAt     DateTime?
   voidedAt     DateTime?
   deletedAt    DateTime?
@@ -586,16 +592,16 @@ model PurchaseInvoiceItem {
   id               String     @id @default(cuid())
   purchaseInvoiceId String
   productId        String
-  quantity         Decimal    @db.Decimal(18, 3)
-  grossWeight      Decimal    @default(0.000) @db.Decimal(18, 3)
-  netWeight        Decimal    @default(0.000) @db.Decimal(18, 3)
+  quantity         Decimal   
+  grossWeight      Decimal    @default(0.000)
+  netWeight        Decimal    @default(0.000)
   karat            GoldKarat?
-  unitCost         Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineDiscount     Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineNet          Decimal    @default(0.000) @db.Decimal(18, 3)
-  vatRate          Decimal    @default(5.000) @db.Decimal(18, 3)
-  vatAmount        Decimal    @default(0.000) @db.Decimal(18, 3)
-  lineTotal        Decimal    @default(0.000) @db.Decimal(18, 3)
+  unitCost         Decimal    @default(0.000)
+  lineDiscount     Decimal    @default(0.000)
+  lineNet          Decimal    @default(0.000)
+  vatRate          Decimal    @default(5.000)
+  vatAmount        Decimal    @default(0.000)
+  lineTotal        Decimal    @default(0.000)
 
   purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
   product         Product         @relation(fields: [productId], references: [id])
@@ -607,7 +613,7 @@ model PurchasePayment {
   id                String        @id @default(cuid())
   purchaseInvoiceId String
   method            PaymentMethod
-  amount            Decimal       @db.Decimal(18, 3)
+  amount            Decimal      
   bankAccountId     String?
   reference         String?
   chequeNo          String?
@@ -629,11 +635,11 @@ model PurchaseReturn {
   supplierId        String
   returnDate        DateTime       @default(now())
   status            DocumentStatus @default(DRAFT)
-  taxable           Decimal        @default(0.000) @db.Decimal(18, 3)
-  vatAmount         Decimal        @default(0.000) @db.Decimal(18, 3)
-  total             Decimal        @default(0.000) @db.Decimal(18, 3)
-  refundAmount      Decimal        @default(0.000) @db.Decimal(18, 3)
-  notes             String?        @db.Text
+  taxable           Decimal        @default(0.000)
+  vatAmount         Decimal        @default(0.000)
+  total             Decimal        @default(0.000)
+  refundAmount      Decimal        @default(0.000)
+  notes             String?       
   postedAt          DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -650,12 +656,12 @@ model PurchaseReturnItem {
   id               String  @id @default(cuid())
   purchaseReturnId String
   productId        String
-  quantity         Decimal @db.Decimal(18, 3)
-  netWeight        Decimal @default(0.000) @db.Decimal(18, 3)
-  lineNet          Decimal @default(0.000) @db.Decimal(18, 3)
-  vatRate          Decimal @default(5.000) @db.Decimal(18, 3)
-  vatAmount        Decimal @default(0.000) @db.Decimal(18, 3)
-  lineTotal        Decimal @default(0.000) @db.Decimal(18, 3)
+  quantity         Decimal
+  netWeight        Decimal @default(0.000)
+  lineNet          Decimal @default(0.000)
+  vatRate          Decimal @default(5.000)
+  vatAmount        Decimal @default(0.000)
+  lineTotal        Decimal @default(0.000)
 
   purchaseReturn PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
 
@@ -669,12 +675,12 @@ model OldGoldExchange {
   saleInvoiceId String?
   exchangeDate  DateTime       @default(now())
   karat         GoldKarat
-  weight        Decimal        @db.Decimal(18, 3)
-  ratePerGram   Decimal        @db.Decimal(18, 3)
-  value         Decimal        @db.Decimal(18, 3)
-  paymentOut    Decimal        @default(0.000) @db.Decimal(18, 3)
+  weight        Decimal       
+  ratePerGram   Decimal       
+  value         Decimal       
+  paymentOut    Decimal        @default(0.000)
   status        DocumentStatus @default(DRAFT)
-  notes         String?        @db.Text
+  notes         String?       
   postedAt      DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -688,13 +694,13 @@ model AdvanceOrder {
   id               String             @id @default(cuid())
   orderNo          String             @unique
   customerId       String
-  description      String             @db.Text
-  expectedDelivery DateTime?          @db.Date
-  totalAmount      Decimal            @db.Decimal(18, 3)
-  advancePaid      Decimal            @default(0.000) @db.Decimal(18, 3)
-  remaining        Decimal            @default(0.000) @db.Decimal(18, 3)
+  description      String            
+  expectedDelivery DateTime?         
+  totalAmount      Decimal           
+  advancePaid      Decimal            @default(0.000)
+  remaining        Decimal            @default(0.000)
   status           AdvanceOrderStatus @default(PENDING)
-  notes            String?            @db.Text
+  notes            String?           
   deletedAt        DateTime?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -710,12 +716,12 @@ model CustomOrder {
   id               String             @id @default(cuid())
   orderNo          String             @unique
   customerId       String
-  specs            String             @db.Text
+  specs            String            
   karat            GoldKarat?
-  estimatedWeight  Decimal?           @db.Decimal(18, 3)
-  estimatedAmount  Decimal            @default(0.000) @db.Decimal(18, 3)
-  advancePaid      Decimal            @default(0.000) @db.Decimal(18, 3)
-  expectedDelivery DateTime?          @db.Date
+  estimatedWeight  Decimal?          
+  estimatedAmount  Decimal            @default(0.000)
+  advancePaid      Decimal            @default(0.000)
+  expectedDelivery DateTime?         
   status           AdvanceOrderStatus @default(PENDING)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -728,10 +734,10 @@ model RepairOrder {
   id               String             @id @default(cuid())
   orderNo          String             @unique
   customerId       String
-  description      String             @db.Text
-  estimatedAmount  Decimal            @default(0.000) @db.Decimal(18, 3)
-  advancePaid      Decimal            @default(0.000) @db.Decimal(18, 3)
-  expectedDelivery DateTime?          @db.Date
+  description      String            
+  estimatedAmount  Decimal            @default(0.000)
+  advancePaid      Decimal            @default(0.000)
+  expectedDelivery DateTime?         
   status           AdvanceOrderStatus @default(PENDING)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -743,10 +749,10 @@ model RepairOrder {
 model InstallmentPlan {
   id                String   @id @default(cuid())
   saleInvoiceId     String   @unique
-  totalAmount       Decimal  @db.Decimal(18, 3)
-  advanceAmount     Decimal  @default(0.000) @db.Decimal(18, 3)
-  remainingAmount   Decimal  @db.Decimal(18, 3)
-  installmentAmount Decimal  @db.Decimal(18, 3)
+  totalAmount       Decimal 
+  advanceAmount     Decimal  @default(0.000)
+  remainingAmount   Decimal 
+  installmentAmount Decimal 
   installmentCount  Int
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -759,9 +765,9 @@ model InstallmentPlan {
 model InstallmentSchedule {
   id                String            @id @default(cuid())
   installmentPlanId String
-  dueDate           DateTime          @db.Date
-  amount            Decimal           @db.Decimal(18, 3)
-  paidAmount        Decimal           @default(0.000) @db.Decimal(18, 3)
+  dueDate           DateTime         
+  amount            Decimal          
+  paidAmount        Decimal           @default(0.000)
   status            InstallmentStatus @default(PENDING)
   paidAt            DateTime?
   createdAt         DateTime          @default(now())
@@ -774,11 +780,11 @@ model InstallmentSchedule {
 
 model CashSession {
   id            String            @id @default(cuid())
-  sessionDate   DateTime          @db.Date
-  openingCash   Decimal           @db.Decimal(18, 3)
-  closingCash   Decimal?          @db.Decimal(18, 3)
-  expectedCash  Decimal?          @db.Decimal(18, 3)
-  difference    Decimal?          @db.Decimal(18, 3)
+  sessionDate   DateTime         
+  openingCash   Decimal          
+  closingCash   Decimal?         
+  expectedCash  Decimal?         
+  difference    Decimal?         
   status        CashSessionStatus @default(OPEN)
   openedById    String
   closedById    String?
@@ -797,7 +803,7 @@ model CashTransaction {
   id            String   @id @default(cuid())
   cashSessionId String?
   type          String
-  amount        Decimal  @db.Decimal(18, 3)
+  amount        Decimal 
   reason        String?
   refType       String?
   refId         String?
@@ -815,8 +821,8 @@ model BankAccount {
   bankName       String
   accountNo      String?
   iban           String?
-  openingBalance Decimal   @default(0.000) @db.Decimal(18, 3)
-  currentBalance Decimal   @default(0.000) @db.Decimal(18, 3)
+  openingBalance Decimal   @default(0.000)
+  currentBalance Decimal   @default(0.000)
   glAccountId    String?
   isActive       Boolean   @default(true)
   deletedAt      DateTime?
@@ -832,7 +838,7 @@ model BankTransaction {
   id              String      @id @default(cuid())
   bankAccountId   String
   type            BankTxnType
-  amount          Decimal     @db.Decimal(18, 3)
+  amount          Decimal    
   contraAccountId String?
   reference       String?
   memo            String?
@@ -859,12 +865,12 @@ model Expense {
   number        String        @unique
   expenseDate   DateTime      @default(now())
   categoryId    String
-  amount        Decimal       @db.Decimal(18, 3)
+  amount        Decimal      
   paymentMethod PaymentMethod
   bankAccountId String?
   attachmentId  String?
   reference     String?
-  notes         String?       @db.Text
+  notes         String?      
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   createdById   String?
@@ -880,9 +886,9 @@ model UtilityBill {
   id          String            @id @default(cuid())
   type        UtilityBillType
   billNumber  String?
-  dueDate     DateTime          @db.Date
-  paidDate    DateTime?         @db.Date
-  amount      Decimal           @db.Decimal(18, 3)
+  dueDate     DateTime         
+  paidDate    DateTime?        
+  amount      Decimal          
   status      UtilityBillStatus @default(PENDING)
   expenseId   String?
   notes       String?
@@ -930,7 +936,7 @@ model FiscalPeriod {
 model JournalEntry {
   id         String        @id @default(cuid())
   number     String        @unique
-  entryDate  DateTime      @db.Date
+  entryDate  DateTime     
   memo       String?
   sourceType String?
   sourceId   String?
@@ -950,8 +956,8 @@ model JournalLine {
   id             String    @id @default(cuid())
   journalEntryId String
   accountId      String
-  debit          Decimal   @default(0.000) @db.Decimal(18, 3)
-  credit         Decimal   @default(0.000) @db.Decimal(18, 3)
+  debit          Decimal   @default(0.000)
+  credit         Decimal   @default(0.000)
   partyType      PartyType?
   partyId        String?
   narration      String?
@@ -968,11 +974,11 @@ model VatReturn {
   id          String   @id @default(cuid())
   year        Int
   month       Int
-  outputVat   Decimal  @db.Decimal(18, 3)
-  inputVat    Decimal  @db.Decimal(18, 3)
-  netVat      Decimal  @db.Decimal(18, 3)
-  taxableSales Decimal @db.Decimal(18, 3)
-  taxablePurchases Decimal @db.Decimal(18, 3)
+  outputVat   Decimal 
+  inputVat    Decimal 
+  netVat      Decimal 
+  taxableSales Decimal
+  taxablePurchases Decimal
   lockedAt    DateTime?
   createdAt   DateTime @default(now())
 
@@ -994,7 +1000,7 @@ model Notification {
   userId    String?
   type      String
   title     String
-  body      String   @db.Text
+  body      String  
   isRead    Boolean  @default(false)
   refType   String?
   refId     String?
@@ -1012,7 +1018,7 @@ model BackupJob {
   status      String
   filePath    String?
   sizeBytes   Int?
-  error       String?  @db.Text
+  error       String? 
   createdAt   DateTime @default(now())
   createdById String?
 }
@@ -1020,7 +1026,7 @@ model BackupJob {
 model AppSetting {
   id        String   @id @default(cuid())
   key       String   @unique
-  value     String   @db.Text
+  value     String  
   updatedAt DateTime @updatedAt
 }
 

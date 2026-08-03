@@ -5,9 +5,34 @@ const FALLBACK_API = 'http://127.0.0.1:3847/api/v1';
 /**
  * Resolve API base URL for same-machine and LAN access.
  * If the UI is opened as http://192.168.x.x:3000, API calls go to
- * http://192.168.x.x:3847 even when .env points at 127.0.0.1.
+ * http://192.168.x.x:3847 (or dynamically chosen port) even when .env points at 127.0.0.1.
  */
 export function getApiBaseUrl(): string {
+  let apiPort = '3847';
+
+  if (typeof window !== 'undefined') {
+    // Priority order (highest to lowest):
+    // 1. URL query param ?apiPort=XXXX  — set by Electron on every window load with the actual dynamic port
+    // 2. sessionStorage 'apiPort'       — persisted from a previous query param on this session
+    // 3. window.__API_PORT__            — SSR-injected at build/render time (may be stale on port conflict)
+    // 4. hardcoded default 3847
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryPort = urlParams.get('apiPort');
+    if (queryPort) {
+      apiPort = queryPort;
+      // Persist so it survives client-side navigation (Next.js removes the query param on route push)
+      try { sessionStorage.setItem('apiPort', queryPort); } catch { /* ignore */ }
+    } else {
+      const persistedPort = sessionStorage.getItem('apiPort');
+      if (persistedPort) {
+        apiPort = persistedPort;
+      } else if ((window as any).__API_PORT__) {
+        apiPort = (window as any).__API_PORT__;
+      }
+    }
+  }
+
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
 
   if (typeof window !== 'undefined') {
@@ -21,6 +46,7 @@ export function getApiBaseUrl(): string {
           const u = new URL(configured);
           if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
             u.hostname = pageHost;
+            u.port = apiPort;
             return u.toString().replace(/\/$/, '');
           }
         } catch {
@@ -28,17 +54,31 @@ export function getApiBaseUrl(): string {
         }
       }
       const protocol = window.location.protocol || 'http:';
-      return `${protocol}//${pageHost}:3847/api/v1`;
+      return `${protocol}//${pageHost}:${apiPort}/api/v1`;
     }
   }
 
-  return (configured || FALLBACK_API).replace(/\/$/, '');
+  if (configured) {
+    try {
+      const u = new URL(configured);
+      if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+        u.port = apiPort;
+        return u.toString().replace(/\/$/, '');
+      }
+    } catch {
+      /* ignore */
+    }
+    return configured.replace(/\/$/, '');
+  }
+
+  return `http://127.0.0.1:${apiPort}/api/v1`;
 }
 
 /** @deprecated Prefer getApiBaseUrl() — kept for any imports that read the const. */
 export const API_BASE_URL = FALLBACK_API;
 
 export const TOKEN_STORAGE_KEY = 'jewelry_erp_token';
+export const AUTH_PERSIST_KEY = 'jewelry_erp_auth';
 
 export class ApiError extends Error {
   constructor(
@@ -56,9 +96,36 @@ export interface PaginatedData<T> {
   meta: ApiMeta;
 }
 
+function readPersistedAuth(): {
+  accessToken?: string | null;
+  refreshToken?: string | null;
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(AUTH_PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { accessToken?: string; refreshToken?: string } };
+    return parsed.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+  const direct = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (direct) return direct;
+  const persisted = readPersistedAuth()?.accessToken;
+  if (persisted) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, persisted);
+    return persisted;
+  }
+  return null;
+}
+
+function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return readPersistedAuth()?.refreshToken ?? null;
 }
 
 export function setAuthToken(token: string | null) {
@@ -68,6 +135,70 @@ export function setAuthToken(token: string | null) {
   } else {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
   }
+}
+
+function writePersistedAccessToken(accessToken: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(AUTH_PERSIST_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as {
+      state?: Record<string, unknown>;
+      version?: number;
+    };
+    if (!parsed.state) return;
+    parsed.state.accessToken = accessToken;
+    localStorage.setItem(AUTH_PERSIST_KEY, JSON.stringify(parsed));
+  } catch {
+    /* ignore */
+  }
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return null;
+    try {
+      const response = await fetch(buildUrl('/auth/refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!response.ok) return null;
+      const body = (await response.json()) as ApiResponse<{
+        accessToken: string;
+        refreshToken: string;
+      }>;
+      const accessToken = body.data?.accessToken;
+      if (!accessToken) return null;
+      setAuthToken(accessToken);
+      writePersistedAccessToken(accessToken);
+      // Keep refresh token rotation if returned
+      if (body.data.refreshToken) {
+        try {
+          const raw = localStorage.getItem(AUTH_PERSIST_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+            if (parsed.state) {
+              parsed.state.refreshToken = body.data.refreshToken;
+              localStorage.setItem(AUTH_PERSIST_KEY, JSON.stringify(parsed));
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return accessToken;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>> {
@@ -139,6 +270,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  // If access token expired/missing, try one refresh then retry
+  if (auth && response.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`);
+      const retry = await fetch(buildUrl(path, params), {
+        ...init,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return parseJsonResponse<T>(retry);
+    }
+  }
 
   return parseJsonResponse<T>(response);
 }

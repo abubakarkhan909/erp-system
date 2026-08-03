@@ -1,8 +1,15 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InstallmentStatus, Prisma } from '@prisma/client';
-import { moneySchema } from '@jewelry-erp/shared';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InstallmentStatus, PaymentMethod, Prisma } from '@prisma/client';
+import { moneySchema, roundMoney } from '@jewelry-erp/shared';
 import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccountingService } from '../accounting/accounting.service';
+import { ACCOUNT_CODES } from '../accounting/accounting.constants';
 import { decimalStr, paginatedResult, parsePagination } from '../../common/utils/pagination';
 import { zodValidate } from '../../common/utils/zod-validate';
 import { startOfDayUtc } from '../../common/utils/date-range';
@@ -17,11 +24,17 @@ const createPlanSchema = z.object({
 
 const recordPaymentSchema = z.object({
   amount: moneySchema,
+  method: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  bankAccountId: z.string().cuid().optional().nullable(),
+  reference: z.string().max(100).optional().nullable(),
 });
 
 @Injectable()
 export class InstallmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accounting: AccountingService,
+  ) {}
 
   async createPlan(body: unknown, userId?: string) {
     const dto = zodValidate(createPlanSchema, body);
@@ -36,8 +49,12 @@ export class InstallmentsService {
     });
     if (existing) throw new ConflictException('Installment plan already exists for this invoice');
 
+    // Finance the outstanding balance only (already reduced by payments at post time)
     const total = invoice.balance.greaterThan(0) ? invoice.balance : invoice.total;
     const advance = new Prisma.Decimal(dto.advanceAmount ?? '0.000');
+    if (advance.greaterThan(total)) {
+      throw new BadRequestException('Advance cannot exceed outstanding invoice balance');
+    }
     const remaining = total.sub(advance);
     if (remaining.lessThanOrEqualTo(0)) {
       throw new BadRequestException('Nothing to finance after advance');
@@ -56,33 +73,46 @@ export class InstallmentsService {
       const dueDate = new Date(firstDue);
       dueDate.setUTCMonth(dueDate.getUTCMonth() + i);
       const amount =
-        i === dto.installmentCount - 1
-          ? remaining.sub(allocated)
-          : installmentAmount;
+        i === dto.installmentCount - 1 ? remaining.sub(allocated) : installmentAmount;
       schedules.push({ dueDate, amount });
       allocated = allocated.add(amount);
     }
 
-    const plan = await this.prisma.installmentPlan.create({
-      data: {
-        saleInvoiceId: dto.saleInvoiceId,
-        totalAmount: total,
-        advanceAmount: advance,
-        remainingAmount: remaining,
-        installmentAmount,
-        installmentCount: dto.installmentCount,
-        createdById: userId,
-        schedules: {
-          create: schedules.map((s) => ({
-            dueDate: s.dueDate,
-            amount: s.amount,
-          })),
+    const plan = await this.prisma.$transaction(async (tx) => {
+      // Optional extra advance when creating the plan (on top of what was paid at sale post)
+      if (advance.greaterThan(0)) {
+        await this.applyInvoiceReceipt(tx, {
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.number,
+          customerId: invoice.customerId,
+          amount: decimalStr(advance),
+          method: PaymentMethod.CASH,
+          reference: `Installment advance for ${invoice.number}`,
+          userId,
+        });
+      }
+
+      return tx.installmentPlan.create({
+        data: {
+          saleInvoiceId: dto.saleInvoiceId,
+          totalAmount: remaining,
+          advanceAmount: advance,
+          remainingAmount: remaining,
+          installmentAmount,
+          installmentCount: dto.installmentCount,
+          createdById: userId,
+          schedules: {
+            create: schedules.map((s) => ({
+              dueDate: s.dueDate,
+              amount: s.amount,
+            })),
+          },
         },
-      },
-      include: {
-        schedules: { orderBy: { dueDate: 'asc' } },
-        saleInvoice: { select: { id: true, number: true, customerId: true } },
-      },
+        include: {
+          schedules: { orderBy: { dueDate: 'asc' } },
+          saleInvoice: { select: { id: true, number: true, customerId: true } },
+        },
+      });
     });
 
     return this.formatPlan(plan);
@@ -126,7 +156,9 @@ export class InstallmentsService {
       where: { id },
       include: {
         schedules: { orderBy: { dueDate: 'asc' } },
-        saleInvoice: { select: { id: true, number: true, customerId: true, total: true, balance: true } },
+        saleInvoice: {
+          select: { id: true, number: true, customerId: true, total: true, balance: true },
+        },
       },
     });
     if (!plan) throw new NotFoundException('Installment plan not found');
@@ -149,16 +181,27 @@ export class InstallmentsService {
       this.prisma.installmentSchedule.count({ where }),
     ]);
 
-    return paginatedResult(rows.map((s) => this.formatSchedule(s)), total, page, pageSize);
+    return paginatedResult(
+      rows.map((s) => this.formatSchedule(s)),
+      total,
+      page,
+      pageSize,
+    );
   }
 
-  async recordPayment(scheduleId: string, body: unknown, _userId?: string) {
-    const { amount } = zodValidate(recordPaymentSchema, body);
-    const payment = new Prisma.Decimal(amount);
+  async recordPayment(scheduleId: string, body: unknown, userId?: string) {
+    const dto = zodValidate(recordPaymentSchema, body);
+    const payment = new Prisma.Decimal(dto.amount);
 
     const schedule = await this.prisma.installmentSchedule.findUnique({
       where: { id: scheduleId },
-      include: { installmentPlan: true },
+      include: {
+        installmentPlan: {
+          include: {
+            saleInvoice: true,
+          },
+        },
+      },
     });
     if (!schedule) throw new NotFoundException('Installment schedule not found');
     if (schedule.status === 'PAID') {
@@ -195,22 +238,137 @@ export class InstallmentsService {
         data: { remainingAmount: planRemaining.lessThan(0) ? 0 : planRemaining },
       });
 
-      const invoice = await tx.saleInvoice.findUnique({
-        where: { id: schedule.installmentPlan.saleInvoiceId },
+      const invoice = schedule.installmentPlan.saleInvoice;
+      await this.applyInvoiceReceipt(tx, {
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.number,
+        customerId: invoice.customerId,
+        amount: decimalStr(payment),
+        method: dto.method ?? PaymentMethod.CASH,
+        bankAccountId: dto.bankAccountId,
+        reference: dto.reference ?? `Installment ${invoice.number}`,
+        userId,
       });
-      if (invoice) {
-        const newPaidInv = invoice.paid.add(payment);
-        const newBalance = invoice.total.sub(newPaidInv);
-        await tx.saleInvoice.update({
-          where: { id: invoice.id },
-          data: { paid: newPaidInv, balance: newBalance.lessThan(0) ? 0 : newBalance },
-        });
-      }
 
       return sched;
     });
 
     return this.formatSchedule(updated);
+  }
+
+  /**
+   * Apply a receipt against a posted sale: SalePayment, invoice paid/balance,
+   * customer AR, cash/bank, and GL (Dr Cash/Bank, Cr AR).
+   */
+  private async applyInvoiceReceipt(
+    tx: Prisma.TransactionClient,
+    ctx: {
+      invoiceId: string;
+      invoiceNumber: string;
+      customerId: string | null;
+      amount: string;
+      method: PaymentMethod;
+      bankAccountId?: string | null;
+      reference?: string | null;
+      userId?: string;
+    },
+  ) {
+    const amount = roundMoney(ctx.amount);
+    if (parseFloat(amount) <= 0) return;
+
+    const invoice = await tx.saleInvoice.findUnique({ where: { id: ctx.invoiceId } });
+    if (!invoice) throw new NotFoundException('Sale invoice not found');
+
+    const newPaidInv = invoice.paid.add(amount);
+    const newBalance = invoice.total.sub(newPaidInv);
+    const balanceOut = newBalance.lessThan(0) ? new Prisma.Decimal(0) : newBalance;
+
+    await tx.saleInvoice.update({
+      where: { id: invoice.id },
+      data: { paid: newPaidInv, balance: balanceOut },
+    });
+
+    await tx.salePayment.create({
+      data: {
+        saleInvoiceId: invoice.id,
+        method: ctx.method,
+        amount,
+        bankAccountId: ctx.bankAccountId ?? null,
+        reference: ctx.reference ?? null,
+        createdById: ctx.userId,
+      },
+    });
+
+    if (invoice.customerId) {
+      await tx.customer.update({
+        where: { id: invoice.customerId },
+        data: { currentBalance: { decrement: amount } },
+      });
+    }
+
+    if (ctx.method === PaymentMethod.CASH) {
+      const openSession = await tx.cashSession.findFirst({
+        where: { status: 'OPEN' },
+        orderBy: { openedAt: 'desc' },
+      });
+      await tx.cashTransaction.create({
+        data: {
+          cashSessionId: openSession?.id ?? null,
+          type: 'IN',
+          amount,
+          reason: 'INSTALLMENT',
+          refType: 'INSTALLMENT',
+          refId: invoice.id,
+          createdById: ctx.userId,
+        },
+      });
+    } else if (
+      (ctx.method === PaymentMethod.BANK_TRANSFER ||
+        ctx.method === PaymentMethod.CARD ||
+        ctx.method === PaymentMethod.CHEQUE) &&
+      ctx.bankAccountId
+    ) {
+      await tx.bankAccount.update({
+        where: { id: ctx.bankAccountId },
+        data: { currentBalance: { increment: amount } },
+      });
+      await tx.bankTransaction.create({
+        data: {
+          bankAccountId: ctx.bankAccountId,
+          type: 'DEPOSIT',
+          amount,
+          reference: ctx.reference ?? invoice.number,
+          memo: `Installment ${invoice.number}`,
+          txnDate: new Date(),
+          createdById: ctx.userId,
+        },
+      });
+    }
+
+    const debitAccount =
+      ctx.method === PaymentMethod.CASH ? ACCOUNT_CODES.CASH : ACCOUNT_CODES.BANK;
+
+    await this.accounting.postJournal(tx, {
+      entryDate: new Date(),
+      memo: `Installment receipt ${invoice.number}`,
+      sourceType: 'INSTALLMENT',
+      sourceId: `${invoice.id}-${Date.now()}`,
+      createdById: ctx.userId,
+      lines: [
+        {
+          accountCode: debitAccount,
+          debit: amount,
+          credit: '0.000',
+        },
+        {
+          accountCode: ACCOUNT_CODES.AR,
+          debit: '0.000',
+          credit: amount,
+          partyType: invoice.customerId ? 'CUSTOMER' : undefined,
+          partyId: invoice.customerId ?? undefined,
+        },
+      ],
+    });
   }
 
   async upcoming(query: Record<string, unknown>) {
@@ -233,7 +391,9 @@ export class InstallmentsService {
         take,
         include: {
           installmentPlan: {
-            include: { saleInvoice: { select: { id: true, number: true, customerId: true } } },
+            include: {
+              saleInvoice: { select: { id: true, number: true, customerId: true } },
+            },
           },
         },
         orderBy: { dueDate: 'asc' },
@@ -270,7 +430,9 @@ export class InstallmentsService {
         take,
         include: {
           installmentPlan: {
-            include: { saleInvoice: { select: { id: true, number: true, customerId: true } } },
+            include: {
+              saleInvoice: { select: { id: true, number: true, customerId: true } },
+            },
           },
         },
         orderBy: { dueDate: 'asc' },
@@ -282,7 +444,9 @@ export class InstallmentsService {
       rows.map((s) => ({
         ...this.formatSchedule(s),
         saleInvoice: s.installmentPlan.saleInvoice,
-        daysLate: Math.floor((today.getTime() - s.dueDate.getTime()) / (24 * 60 * 60 * 1000)),
+        daysLate: Math.floor(
+          (today.getTime() - s.dueDate.getTime()) / (24 * 60 * 60 * 1000),
+        ),
       })),
       total,
       page,
@@ -299,7 +463,13 @@ export class InstallmentsService {
     installmentAmount: Prisma.Decimal;
     installmentCount: number;
     createdAt: Date;
-    saleInvoice?: { id: string; number: string; customerId: string | null; total?: Prisma.Decimal; balance?: Prisma.Decimal };
+    saleInvoice?: {
+      id: string;
+      number: string;
+      customerId: string | null;
+      total?: Prisma.Decimal;
+      balance?: Prisma.Decimal;
+    };
     schedules?: Array<{
       id: string;
       dueDate: Date;
@@ -315,8 +485,12 @@ export class InstallmentsService {
       saleInvoice: plan.saleInvoice
         ? {
             ...plan.saleInvoice,
-            total: plan.saleInvoice.total != null ? decimalStr(plan.saleInvoice.total) : undefined,
-            balance: plan.saleInvoice.balance != null ? decimalStr(plan.saleInvoice.balance) : undefined,
+            total:
+              plan.saleInvoice.total != null ? decimalStr(plan.saleInvoice.total) : undefined,
+            balance:
+              plan.saleInvoice.balance != null
+                ? decimalStr(plan.saleInvoice.balance)
+                : undefined,
           }
         : undefined,
       totalAmount: decimalStr(plan.totalAmount),

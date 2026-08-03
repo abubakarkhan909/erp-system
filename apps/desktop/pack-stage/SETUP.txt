@@ -1,37 +1,37 @@
-Al Mas Jewelry ERP — Install on client PC
+Al Zahid Jewelry ERP — Install on client PC
 ========================================
 
 Give the client ONLY this file:
-  Al Mas Jewelry ERP-1.0.0-Setup.exe
+  Al Zahid Jewelry ERP-1.0.0-Setup.exe
 
-BEFORE installing the ERP (once on that PC)
-------------------------------------------
-1) Install XAMPP (or MySQL 8) and START MySQL
-   https://www.apachefriends.org/
+No MySQL / XAMPP / Node.js needed.
+Data is stored locally as SQLite under:
+  %APPDATA%\Al Zahid Jewelry ERP\data\jewelry.db
 
-2) Open phpMyAdmin → create database named:  esp_shop
-   (empty database is fine)
-
-3) Install Al Mas Jewelry ERP-1.0.0-Setup.exe
+Install steps
+-------------
+1) Run Al Zahid Jewelry ERP-1.0.0-Setup.exe
    (Desktop shortcut will be created)
 
-4) Open "Al Mas Jewelry ERP" from the Desktop
-   - First launch creates config automatically
-   - First launch creates tables + owner login
+2) Open "Al Zahid Jewelry ERP" from the Desktop
+   - First launch creates local database + owner login
 
-5) Login:
-   Username: owner
-   Password: Owner@12345
+3) Login:
+   Username: admin
+   Password: admin@1234
 
-CHANGE THE OWNER PASSWORD after first login (Users tab).
+   (also available)
+   Username: zahid
+   Password: zahid@1234
 
-If MySQL root has a password, edit:
-  %APPDATA%\Al Mas Jewelry ERP\.env
-and set:
-  DATABASE_URL="mysql://root:YOURPASSWORD@127.0.0.1:3306/esp_shop"
-Then delete the file:
-  %APPDATA%\Al Mas Jewelry ERP\.db-ready
-and open the app again.
+CHANGE THE ADMIN PASSWORD after first login (Users tab).
 
-Node.js is NOT required on the client PC (bundled).
-MySQL / XAMPP IS required.
+Backup (important)
+------------------
+Use Backup in the app to copy the database file, then Download it to a USB drive.
+If the PC dies, Restore that .db backup (or copy jewelry.db back into the AppData folder).
+
+If first launch fails
+---------------------
+Delete this file and open the app again:
+  %APPDATA%\Al Zahid Jewelry ERP\.db-ready

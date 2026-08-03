@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { canManageSettings, canManageUsers } from '@/lib/auth-access';
 import { NAV_ITEMS, type NavIcon } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
@@ -122,6 +123,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     .slice(0, 2)
     .toUpperCase() || 'AM';
 
+  const visibleNav = NAV_ITEMS.filter((item) => {
+    const access = 'requireAccess' in item ? item.requireAccess : undefined;
+    if (!access) return true;
+    if (access === 'users.manage') return canManageUsers(user);
+    if (access === 'settings.manage') return canManageSettings(user);
+    return true;
+  });
+
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
@@ -159,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-3 scrollbar-thin">
-          {NAV_ITEMS.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink
               key={item.href}
               href={item.href}

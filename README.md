@@ -1,4 +1,4 @@
-# Al Mas Jewelry ERP
+# Al Zahid Jewelry ERP
 
 Enterprise desktop ERP for a gold/jewelry shop in **Oman** (currency **OMR**, VAT **5%**).
 
@@ -9,7 +9,7 @@ Enterprise desktop ERP for a gold/jewelry shop in **Oman** (currency **OMR**, VA
 | Desktop | Electron |
 | Frontend | Next.js (App Router), TypeScript, Tailwind, Zustand, TanStack Query |
 | Backend | NestJS, Prisma, JWT + RBAC |
-| Database | MySQL 8 |
+| Database | SQLite (local file) |
 
 ## Monorepo layout
 
@@ -24,19 +24,11 @@ packages/shared  Shared enums, Zod schemas, OMR money helpers
 
 - Node.js 20+
 - pnpm 9+
-- MySQL 8 (or Docker)
+- No MySQL — database is a local SQLite file
 
 ## Quick start
 
-### 1. Database
-
-```bash
-docker compose up -d
-```
-
-Or point `apps/api/.env` `DATABASE_URL` at your MySQL instance. This project uses database **`esp_shop`** by default (phpMyAdmin / XAMPP).
-
-### 2. Install & migrate
+### 1. Install & migrate
 
 ```bash
 pnpm install
@@ -45,7 +37,9 @@ pnpm db:generate
 cd apps/api && pnpm exec prisma migrate deploy && pnpm prisma:seed
 ```
 
-### 3. Run (three terminals)
+SQLite file: `apps/api/data/jewelry.db` (`DATABASE_URL=file:../data/jewelry.db` in `apps/api/.env`).
+
+### 2. Run (three terminals)
 
 ```bash
 pnpm dev:api
@@ -53,7 +47,7 @@ pnpm dev:web
 pnpm dev:desktop   # optional
 ```
 
-Default login (seed): **owner** / **Owner@12345**
+Default login (seed): **admin** / **admin@1234** (also **zahid** / **zahid@1234**)
 
 ### LAN access (another PC on the same Wi‑Fi/network)
 
@@ -69,6 +63,7 @@ Copy `apps/web/.env.local.example` → `apps/web/.env.local`
 
 ## Documentation
 
+- [**Client User Guide** (non-technical)](docs/CLIENT-USER-GUIDE.md) — features, flows, and how to use every screen
 - [Architecture](docs/architecture.md)
 - [Accounting](docs/accounting.md)
 - [Oman VAT](docs/vat-oman.md)

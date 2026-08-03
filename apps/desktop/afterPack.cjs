@@ -20,12 +20,26 @@ exports.default = async function afterPack(context) {
     fs.cpSync(src, dest, { recursive: true, force: true });
   }
 
-  // Nest build may emit src/main.js — ensure a stable entry exists
+  // Nest may emit either dist/main.js (flat) or dist/src/main.js (nested).
+  // Never copy src/main.js to the root — its relative requires break (./app.module).
+  // Prefer a thin wrapper so Electron can always start resources/api/main.js.
   const apiRes = path.join(resources, 'api');
   const nestedMain = path.join(apiRes, 'src', 'main.js');
   const rootMain = path.join(apiRes, 'main.js');
-  if (!fs.existsSync(rootMain) && fs.existsSync(nestedMain)) {
-    fs.copyFileSync(nestedMain, rootMain);
-    console.log('[afterPack] mirrored src/main.js → main.js');
+  const rootModule = path.join(apiRes, 'app.module.js');
+  if (fs.existsSync(nestedMain) && !fs.existsSync(rootModule)) {
+    fs.writeFileSync(
+      rootMain,
+      "'use strict';\nrequire('./src/main.js');\n",
+      'utf8',
+    );
+    console.log('[afterPack] wrote main.js wrapper → ./src/main.js');
+  }
+
+  // Drop Next build cache if it slipped into the package (~300MB+)
+  const nextCache = path.join(resources, 'web', '.next', 'cache');
+  if (fs.existsSync(nextCache)) {
+    console.log('[afterPack] removing web/.next/cache');
+    fs.rmSync(nextCache, { recursive: true, force: true });
   }
 };

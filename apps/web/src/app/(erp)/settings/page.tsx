@@ -26,7 +26,7 @@ export default function SettingsPage() {
   const form = useForm<FormInput<typeof companySettingsSchema>>({
     resolver: formResolver(companySettingsSchema),
     defaultValues: {
-      name: 'Al Mas Jewelry',
+      name: 'Al Zahid Jewelry',
       currency: 'OMR',
       defaultVatRate: '5.000',
       invoicePrefix: 'INV',

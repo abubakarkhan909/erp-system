@@ -46,7 +46,7 @@ var require_enums = __commonJS({
   "vendor/shared/dist/enums.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.DocType = exports2.JournalStatus = exports2.FiscalPeriodStatus = exports2.ChequeStatus = exports2.UtilityBillStatus = exports2.UtilityBillType = exports2.InstallmentStatus = exports2.AdvanceOrderStatus = exports2.AccountType = exports2.StockMovementType = exports2.StockMode = exports2.ProductType = exports2.GoldKarat = exports2.PaymentMethod = exports2.DocumentStatus = exports2.PermissionCode = exports2.RoleCode = exports2.DEFAULT_VAT_RATE = exports2.CURRENCY_DECIMALS = exports2.CURRENCY_CODE = void 0;
+    exports2.DocType = exports2.JournalStatus = exports2.FiscalPeriodStatus = exports2.ChequeStatus = exports2.UtilityBillStatus = exports2.UtilityBillType = exports2.InstallmentStatus = exports2.AdvanceOrderStatus = exports2.AccountType = exports2.StockMovementType = exports2.ProductOwnership = exports2.StockMode = exports2.ProductType = exports2.GoldKarat = exports2.PaymentMethod = exports2.DocumentStatus = exports2.PermissionCode = exports2.RoleCode = exports2.DEFAULT_VAT_RATE = exports2.CURRENCY_DECIMALS = exports2.CURRENCY_CODE = void 0;
     exports2.CURRENCY_CODE = "OMR";
     exports2.CURRENCY_DECIMALS = 3;
     exports2.DEFAULT_VAT_RATE = 5;
@@ -130,6 +130,11 @@ var require_enums = __commonJS({
       StockMode3["WEIGHT"] = "WEIGHT";
       StockMode3["BOTH"] = "BOTH";
     })(StockMode2 || (exports2.StockMode = StockMode2 = {}));
+    var ProductOwnership;
+    (function(ProductOwnership2) {
+      ProductOwnership2["OWN"] = "OWN";
+      ProductOwnership2["SUPPLIER"] = "SUPPLIER";
+    })(ProductOwnership || (exports2.ProductOwnership = ProductOwnership = {}));
     var StockMovementType2;
     (function(StockMovementType3) {
       StockMovementType3["PURCHASE"] = "PURCHASE";
@@ -223,6 +228,9 @@ var require_money = __commonJS({
     exports2.subMoney = subMoney2;
     exports2.mulMoney = mulMoney;
     exports2.calcVat = calcVat2;
+    exports2.moneyOrZero = moneyOrZero;
+    exports2.moneyNonZero = moneyNonZero;
+    exports2.calcSaleLine = calcSaleLine;
     exports2.calcGoldLine = calcGoldLine2;
     exports2.formatOmr = formatOmr;
     var enums_1 = require_enums();
@@ -277,6 +285,35 @@ var require_money = __commonJS({
       void vatFromMul;
       const vat = preciseVat;
       return { net, vat, gross: addMoney2(net, vat) };
+    }
+    function moneyOrZero(value) {
+      if (value == null || value === "")
+        return "0.000";
+      return roundMoney2(value);
+    }
+    function moneyNonZero(value) {
+      const n = parseFloat(moneyOrZero(value));
+      return Number.isFinite(n) && n > 0 ? moneyOrZero(value) : null;
+    }
+    function calcSaleLine(input) {
+      const weight = moneyOrZero(input.netWeightGram);
+      const unitPrice = moneyOrZero(input.unitPrice);
+      const qtyRaw = Number(input.quantity ?? 1);
+      const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+      let goldValue = "0.000";
+      let pieceValue = "0.000";
+      if (parseFloat(weight) > 0) {
+        const rate = moneyNonZero(input.ratePerGram) ?? moneyNonZero(unitPrice) ?? "0.000";
+        goldValue = mulMoney(weight, rate);
+      } else {
+        pieceValue = mulMoney(String(qty), unitPrice);
+      }
+      const making = moneyOrZero(input.makingCharges);
+      const stone = moneyOrZero(input.stoneCharges);
+      const discount = moneyOrZero(input.lineDiscount);
+      const lineNet = subMoney2(addMoney2(goldValue, pieceValue, making, stone), discount);
+      const { vat, gross } = calcVat2(lineNet, input.vatRatePercent);
+      return { goldValue, pieceValue, lineNet, vatAmount: vat, lineTotal: gross };
     }
     function calcGoldLine2(input) {
       const goldValue = mulMoney(input.netWeightGram, input.ratePerGram);
@@ -4470,7 +4507,7 @@ var require_schemas = __commonJS({
   "vendor/shared/dist/schemas.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.advanceOrderSchema = exports2.companySettingsSchema = exports2.saleInvoiceSchema = exports2.paymentRowSchema = exports2.saleItemSchema = exports2.goldRateSchema = exports2.productSchema = exports2.supplierSchema = exports2.customerSchema = exports2.changePasswordSchema = exports2.loginSchema = exports2.paginationSchema = exports2.moneySchema = void 0;
+    exports2.advanceOrderSchema = exports2.companySettingsSchema = exports2.saleInvoiceSchema = exports2.paymentRowSchema = exports2.saleItemSchema = exports2.goldRateSchema = exports2.productCreateSchema = exports2.productSchema = exports2.supplierSchema = exports2.customerSchema = exports2.changePasswordSchema = exports2.loginSchema = exports2.paginationSchema = exports2.moneySchema = void 0;
     var zod_1 = require_zod();
     var enums_1 = require_enums();
     exports2.moneySchema = zod_1.z.string().regex(/^-?\d+(\.\d{1,3})?$/, "Invalid OMR amount (max 3 decimals)");
@@ -4516,6 +4553,7 @@ var require_schemas = __commonJS({
       brandId: zod_1.z.string().cuid().optional().nullable(),
       productType: zod_1.z.nativeEnum(enums_1.ProductType).default(enums_1.ProductType.FINISHED),
       stockMode: zod_1.z.nativeEnum(enums_1.StockMode).default(enums_1.StockMode.BOTH),
+      ownership: zod_1.z.nativeEnum(enums_1.ProductOwnership).default(enums_1.ProductOwnership.SUPPLIER),
       purityKarat: zod_1.z.nativeEnum(enums_1.GoldKarat).optional().nullable(),
       grossWeight: exports2.moneySchema.default("0.000"),
       netWeight: exports2.moneySchema.default("0.000"),
@@ -4528,6 +4566,21 @@ var require_schemas = __commonJS({
       minStockQty: zod_1.z.coerce.number().default(0),
       minStockWeight: exports2.moneySchema.default("0.000"),
       status: zod_1.z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE")
+    });
+    exports2.productCreateSchema = exports2.productSchema.extend({
+      openingQty: zod_1.z.coerce.number().min(0).optional(),
+      openingWeight: exports2.moneySchema.optional().nullable()
+    }).superRefine((data, ctx) => {
+      if (data.ownership === enums_1.ProductOwnership.OWN) {
+        const qty = data.openingQty ?? 0;
+        if (qty <= 0) {
+          ctx.addIssue({
+            code: zod_1.z.ZodIssueCode.custom,
+            message: "Enter opening quantity for own / workshop stock",
+            path: ["openingQty"]
+          });
+        }
+      }
     });
     exports2.goldRateSchema = zod_1.z.object({
       rateDate: zod_1.z.string().or(zod_1.z.coerce.date()),
@@ -4734,8 +4787,8 @@ async function postJournal(opts) {
 }
 async function seedDemoData() {
   console.log("Seeding demo data for all modules...");
-  const owner = await prisma.user.findFirst({ where: { username: "owner" } });
-  if (!owner) throw new Error("Run base seed first (owner user missing)");
+  const owner = await prisma.user.findFirst({ where: { username: "admin" } }) || await prisma.user.findFirst({ where: { username: "owner" } });
+  if (!owner) throw new Error("Run base seed first (admin user missing)");
   const existingDemo = await prisma.customer.findFirst({ where: { notes: { contains: "[DEMO]" } } });
   if (existingDemo) {
     console.log("Clearing previous demo data...");
@@ -4798,9 +4851,9 @@ async function seedDemoData() {
     create: { name: "[DEMO] Earrings" }
   });
   const brandHouse = await prisma.brand.upsert({
-    where: { name: "[DEMO] Al Mas House" },
+    where: { name: "[DEMO] Al Zahid House" },
     update: {},
-    create: { name: "[DEMO] Al Mas House" }
+    create: { name: "[DEMO] Al Zahid House" }
   });
   const brandImport = await prisma.brand.upsert({
     where: { name: "[DEMO] Dubai Gold" },
@@ -5897,7 +5950,8 @@ async function seedDemoData() {
   });
   console.log("");
   console.log("========== DEMO LOGIN ACCOUNTS ==========");
-  console.log("owner      / Owner@12345     (Owner)");
+  console.log("admin      / admin@1234     (Owner / admin)");
+  console.log("zahid      / zahid@1234     (Owner / admin)");
   console.log("manager    / Manager@123     (Manager)");
   console.log("cashier    / Cashier@123     (Cashier)");
   console.log("salesman   / Salesman@123    (Salesman)");
@@ -6120,30 +6174,70 @@ async function main() {
       });
     }
   }
-  const username = process.env.SEED_OWNER_USERNAME || "owner";
-  const password = process.env.SEED_OWNER_PASSWORD || "Owner@12345";
-  const hash3 = await bcrypt2.hash(password, 10);
   const ownerRole = await prisma2.role.findUniqueOrThrow({ where: { code: "OWNER" } });
-  const owner = await prisma2.user.upsert({
-    where: { username },
-    update: {},
-    create: {
-      username,
-      fullName: "Shop Owner",
-      email: "owner@jewelry.local",
-      passwordHash: hash3,
-      roles: { create: [{ roleId: ownerRole.id }] }
+  const ADMIN_USERS = [
+    {
+      username: "admin",
+      password: "admin@1234",
+      fullName: "Administrator",
+      email: "admin@jewelry.local"
+    },
+    {
+      username: "zahid",
+      password: "zahid@1234",
+      fullName: "Zahid",
+      email: "zahid@jewelry.local"
     }
+  ];
+  let primaryAdminId = "";
+  for (const u of ADMIN_USERS) {
+    const hash3 = await bcrypt2.hash(u.password, 10);
+    const user = await prisma2.user.upsert({
+      where: { username: u.username },
+      update: {
+        fullName: u.fullName,
+        email: u.email,
+        passwordHash: hash3,
+        passwordHint: u.password,
+        isActive: true,
+        deletedAt: null
+      },
+      create: {
+        username: u.username,
+        fullName: u.fullName,
+        email: u.email,
+        passwordHash: hash3,
+        passwordHint: u.password,
+        roles: { create: [{ roleId: ownerRole.id }] }
+      }
+    });
+    const hasOwnerRole = await prisma2.userRole.findFirst({
+      where: { userId: user.id, roleId: ownerRole.id }
+    });
+    if (!hasOwnerRole) {
+      await prisma2.userRole.create({
+        data: { userId: user.id, roleId: ownerRole.id }
+      });
+    }
+    if (u.username === "admin") primaryAdminId = user.id;
+    console.log(`Admin login: ${u.username} / ${u.password}`);
+  }
+  await prisma2.user.updateMany({
+    where: { username: "owner" },
+    data: { isActive: false }
+  });
+  const owner = await prisma2.user.findUniqueOrThrow({
+    where: { id: primaryAdminId }
   });
   await prisma2.company.upsert({
     where: { id: (await prisma2.company.findFirst())?.id || "seed-company" },
     update: {},
     create: {
       id: "seed-company",
-      name: "Al Mas Jewelry",
+      name: "Al Zahid Jewelry",
       address: "Muttrah, Muscat, Sultanate of Oman",
       phone: "+968 2400 0000",
-      email: "info@almasjewelry.om",
+      email: "info@alzahidjewelry.om",
       crNumber: "CR-000000",
       vatNumber: "OM1234567890",
       currency: "OMR",
@@ -6234,8 +6328,8 @@ async function main() {
     update: {},
     create: { year, month, status: "OPEN" }
   });
-  console.log(`Owner login: ${username} / ${password}`);
   console.log("Base seed complete.");
+  console.log("Login with: admin / admin@1234  or  zahid / zahid@1234");
   if (process.env.SEED_DEMO === "1" || process.env.SEED_DEMO === "true") {
     console.log("Loading demo data (SEED_DEMO=1)...");
     const { seedDemoData: seedDemoData2 } = await Promise.resolve().then(() => (init_seed_demo(), seed_demo_exports));

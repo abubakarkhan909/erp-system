@@ -2,9 +2,11 @@ const { PrismaClient } = require('@prisma/client');
 const p = new PrismaClient();
 
 async function main() {
-  const tables = await p.$queryRawUnsafe('SHOW TABLES');
+  const tables = await p.$queryRawUnsafe(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma%' ORDER BY name`,
+  );
   console.log('tables', tables.length);
-  console.log(tables.map((t) => Object.values(t)[0]).join(', '));
+  console.log(tables.map((t) => t.name).join(', '));
   const users = await p.user.count();
   const perms = await p.permission.count();
   const roles = await p.role.count();

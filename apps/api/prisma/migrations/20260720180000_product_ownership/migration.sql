@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN "ownership" TEXT NOT NULL DEFAULT 'SUPPLIER';

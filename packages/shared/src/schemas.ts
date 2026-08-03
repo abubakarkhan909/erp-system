@@ -4,6 +4,7 @@ import {
   DocumentStatus,
   GoldKarat,
   PaymentMethod,
+  ProductOwnership,
   ProductType,
   StockMode,
 } from './enums';
@@ -59,6 +60,7 @@ export const productSchema = z.object({
   brandId: z.string().cuid().optional().nullable(),
   productType: z.nativeEnum(ProductType).default(ProductType.FINISHED),
   stockMode: z.nativeEnum(StockMode).default(StockMode.BOTH),
+  ownership: z.nativeEnum(ProductOwnership).default(ProductOwnership.SUPPLIER),
   purityKarat: z.nativeEnum(GoldKarat).optional().nullable(),
   grossWeight: moneySchema.default('0.000'),
   netWeight: moneySchema.default('0.000'),
@@ -72,6 +74,25 @@ export const productSchema = z.object({
   minStockWeight: moneySchema.default('0.000'),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
 });
+
+/** Create product — own stock can include opening quantity in the same step */
+export const productCreateSchema = productSchema
+  .extend({
+    openingQty: z.coerce.number().min(0).optional(),
+    openingWeight: moneySchema.optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.ownership === ProductOwnership.OWN) {
+      const qty = data.openingQty ?? 0;
+      if (qty <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Enter opening quantity for own / workshop stock',
+          path: ['openingQty'],
+        });
+      }
+    }
+  });
 
 export const goldRateSchema = z.object({
   rateDate: z.string().or(z.coerce.date()),
@@ -143,5 +164,6 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type CustomerInput = z.infer<typeof customerSchema>;
 export type SupplierInput = z.infer<typeof supplierSchema>;
 export type ProductInput = z.infer<typeof productSchema>;
+export type ProductCreateInput = z.infer<typeof productCreateSchema>;
 export type SaleInvoiceInput = z.infer<typeof saleInvoiceSchema>;
 export type CompanySettingsInput = z.infer<typeof companySettingsSchema>;

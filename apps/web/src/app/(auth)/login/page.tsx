@@ -56,6 +56,9 @@ export default function LoginPage() {
             <CardTitle className="font-brand text-2xl">Al Zahid Jewelry ERP</CardTitle>
             <CardDescription className="mt-2">
               Sign in to manage sales, inventory, and accounting in OMR
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Default admin: admin / admin@1234
+              </span>
             </CardDescription>
           </div>
         </CardHeader>

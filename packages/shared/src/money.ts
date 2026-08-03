@@ -73,6 +73,66 @@ export function calcVat(
   return { net, vat, gross: addMoney(net, vat) };
 }
 
+/** Normalize money-like values; blank/null → 0.000 */
+export function moneyOrZero(value: string | number | null | undefined): string {
+  if (value == null || value === '') return '0.000';
+  return roundMoney(value);
+}
+
+/** Positive money only; blank/zero → null (for fallback chains). */
+export function moneyNonZero(value: string | number | null | undefined): string | null {
+  const n = parseFloat(moneyOrZero(value));
+  return Number.isFinite(n) && n > 0 ? moneyOrZero(value) : null;
+}
+
+/**
+ * Sale line pricing for jewelry ERP:
+ * - Weight > 0 → goldValue = netWeight × (goldRate || unitPrice)  [jewelry by weight]
+ * - Weight = 0 → pieceValue = quantity × unitPrice               [finished / piece sales]
+ * Then: lineNet = goldValue + pieceValue + making + stone − discount (+ VAT)
+ */
+export function calcSaleLine(input: {
+  quantity?: string | number;
+  netWeightGram?: string | number;
+  ratePerGram?: string | number | null;
+  unitPrice?: string | number | null;
+  makingCharges?: string | number;
+  stoneCharges?: string | number;
+  lineDiscount?: string | number;
+  vatRatePercent: string | number;
+}): {
+  goldValue: string;
+  pieceValue: string;
+  lineNet: string;
+  vatAmount: string;
+  lineTotal: string;
+} {
+  const weight = moneyOrZero(input.netWeightGram);
+  const unitPrice = moneyOrZero(input.unitPrice);
+  const qtyRaw = Number(input.quantity ?? 1);
+  const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+
+  let goldValue = '0.000';
+  let pieceValue = '0.000';
+
+  if (parseFloat(weight) > 0) {
+    // Jewelry: weight × rate. Prefer explicit gold rate; else unit price as rate/gram.
+    const rate = moneyNonZero(input.ratePerGram) ?? moneyNonZero(unitPrice) ?? '0.000';
+    goldValue = mulMoney(weight, rate);
+  } else {
+    // Piece / finished goods: quantity × unit price
+    pieceValue = mulMoney(String(qty), unitPrice);
+  }
+
+  const making = moneyOrZero(input.makingCharges);
+  const stone = moneyOrZero(input.stoneCharges);
+  const discount = moneyOrZero(input.lineDiscount);
+  const lineNet = subMoney(addMoney(goldValue, pieceValue, making, stone), discount);
+  const { vat, gross } = calcVat(lineNet, input.vatRatePercent);
+  return { goldValue, pieceValue, lineNet, vatAmount: vat, lineTotal: gross };
+}
+
+/** Classic jewelry line: weight × rate + making + stone − discount (+ VAT). */
 export function calcGoldLine(input: {
   netWeightGram: string | number;
   ratePerGram: string | number;

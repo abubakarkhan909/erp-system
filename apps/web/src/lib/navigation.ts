@@ -1,3 +1,5 @@
+export type NavAccess = 'users.manage' | 'settings.manage';
+
 export const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard' },
   { label: 'Customers', href: '/customers', icon: 'Users' },
@@ -16,10 +18,11 @@ export const NAV_ITEMS = [
   { label: 'Advances', href: '/advances', icon: 'Clock' },
   { label: 'Installments', href: '/installments', icon: 'CalendarClock' },
   { label: 'Notifications', href: '/notifications', icon: 'Bell' },
-  { label: 'Users', href: '/users', icon: 'UserCog' },
+  { label: 'Users', href: '/users', icon: 'UserCog', requireAccess: 'users.manage' as const },
   { label: 'Settings', href: '/settings', icon: 'Settings' },
   { label: 'Audit', href: '/audit', icon: 'Shield' },
   { label: 'Backup', href: '/backup', icon: 'Database' },
 ] as const;
 
-export type NavIcon = (typeof NAV_ITEMS)[number]['icon'];
+export type NavItem = (typeof NAV_ITEMS)[number];
+export type NavIcon = NavItem['icon'];

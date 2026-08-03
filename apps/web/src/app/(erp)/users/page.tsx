@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, KeyRound, Plus, Search, Shield, ShieldQuestion, UserCog } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiGet, apiList, apiPost, apiPut, ApiError } from '@/lib/api/client';
+import { canManageUsers } from '@/lib/auth-access';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface StaffUser {
   id: string;
@@ -52,6 +55,9 @@ const emptyCreate = {
 };
 
 export default function UsersPage() {
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const allowed = canManageUsers(user);
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
@@ -69,9 +75,16 @@ export default function UsersPage() {
     { question: SUGGESTED_QUESTIONS[2], answer: '' },
   ]);
 
+  useEffect(() => {
+    if (user && !allowed) {
+      router.replace('/dashboard');
+    }
+  }, [user, allowed, router]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['users', search],
     queryFn: () => apiList<StaffUser>('/users', { search, page: 1, pageSize: 50 }),
+    enabled: allowed,
   });
 
   const { data: roles = [] } = useQuery({
@@ -80,6 +93,7 @@ export default function UsersPage() {
       const res = await apiGet<RoleInfo[]>('/users/roles');
       return res.data ?? [];
     },
+    enabled: allowed,
   });
 
   const { data: recoveryStatus } = useQuery({
@@ -88,6 +102,7 @@ export default function UsersPage() {
       const res = await apiGet<{ configured: boolean }>('/users/recovery-key/status');
       return res.data;
     },
+    enabled: allowed,
   });
 
   const resetMutation = useMutation({
@@ -264,11 +279,23 @@ export default function UsersPage() {
     [showPasswords],
   );
 
+  if (!allowed) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Users & Logins"
+          description="Only Owner / Administrator accounts can view user details and passwords."
+        />
+        <p className="text-sm text-muted-foreground">Redirecting…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Users & Logins"
-        description="Create staff, assign roles (permissions come from the role), and manage the owner password vault"
+        description="Create staff, assign roles (permissions come from the role), and manage the owner password vault. Visible only to Owner / Administrator."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setShowPasswords((v) => !v)}>

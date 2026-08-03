@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { DocumentStatus } from '@jewelry-erp/shared';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
@@ -12,8 +12,9 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { apiList, apiPost, ApiError } from '@/lib/api/client';
+import { apiDelete, apiList, apiPost, ApiError } from '@/lib/api/client';
 import { formatDate, formatOmrDisplay } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface Sale {
   id: string;
@@ -24,6 +25,7 @@ interface Sale {
   total?: string;
   paid?: string;
   balance?: string;
+  paymentStatus?: 'UNPAID' | 'PARTIAL' | 'PAID' | 'N/A';
 }
 
 function statusVariant(status: DocumentStatus) {
@@ -37,25 +39,37 @@ function statusVariant(status: DocumentStatus) {
   }
 }
 
+function paymentBadge(row: Sale) {
+  if (row.status !== DocumentStatus.POSTED) return null;
+  const status =
+    row.paymentStatus ??
+    (Number(row.balance ?? 0) <= 0.001
+      ? 'PAID'
+      : Number(row.paid ?? 0) > 0.001
+        ? 'PARTIAL'
+        : 'UNPAID');
+  if (status === 'PAID') return <Badge variant="success">Paid</Badge>;
+  if (status === 'PARTIAL') return <Badge variant="warning">Partial</Badge>;
+  return <Badge variant="secondary">Unpaid</Badge>;
+}
+
 export default function SalesPage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const canWrite =
+    Boolean(user?.roles?.includes('OWNER')) ||
+    Boolean(user?.permissions?.includes('sales.write'));
+  const canVoid =
+    Boolean(user?.roles?.includes('OWNER')) ||
+    Boolean(user?.permissions?.includes('sales.void'));
+
   const [search, setSearch] = useState('');
-  const [postTarget, setPostTarget] = useState<Sale | null>(null);
   const [voidTarget, setVoidTarget] = useState<Sale | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales', search],
     queryFn: () => apiList<Sale>('/sales', { search, page: 1, pageSize: 50 }),
-  });
-
-  const postMutation = useMutation({
-    mutationFn: (row: Sale) => apiPost(`/sales/${row.id}/post`, { payments: [] }),
-    onSuccess: () => {
-      toast.success('Invoice posted');
-      queryClient.invalidateQueries({ queryKey: ['sales'] });
-      setPostTarget(null);
-    },
-    onError: (err: Error) => toast.error(err instanceof ApiError ? err.message : 'Post failed'),
   });
 
   const voidMutation = useMutation({
@@ -66,6 +80,16 @@ export default function SalesPage() {
       setVoidTarget(null);
     },
     onError: (err: Error) => toast.error(err instanceof ApiError ? err.message : 'Void failed'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiDelete(`/sales/${id}`),
+    onSuccess: () => {
+      toast.success('Draft invoice deleted');
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      setDeleteTarget(null);
+    },
+    onError: (err: Error) => toast.error(err instanceof ApiError ? err.message : 'Delete failed'),
   });
 
   const columns = useMemo(
@@ -83,27 +107,51 @@ export default function SalesPage() {
         cell: (row: Sale) => <span className="tabular-nums">{formatOmrDisplay(row.total)}</span>,
       },
       {
+        key: 'paid',
+        header: 'Paid',
+        cell: (row: Sale) => <span className="tabular-nums">{formatOmrDisplay(row.paid)}</span>,
+      },
+      {
         key: 'balance',
-        header: 'Balance',
+        header: 'Balance due',
         cell: (row: Sale) => <span className="tabular-nums">{formatOmrDisplay(row.balance)}</span>,
       },
       {
         key: 'status',
         header: 'Status',
-        cell: (row: Sale) => <Badge variant={statusVariant(row.status)}>{row.status}</Badge>,
+        cell: (row: Sale) => (
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant={statusVariant(row.status)}>{row.status}</Badge>
+            {paymentBadge(row)}
+          </div>
+        ),
       },
       {
         key: 'actions',
         header: '',
-        className: 'w-[140px] text-right',
+        className: 'w-[260px] text-right',
         cell: (row: Sale) => (
           <div className="flex justify-end gap-1">
-            {row.status === DocumentStatus.DRAFT ? (
-              <Button size="sm" variant="outline" onClick={() => setPostTarget(row)}>
-                Post
+            {row.status === DocumentStatus.DRAFT && canWrite ? (
+              <>
+                <Button size="sm" variant="outline" asChild>
+                  <Link href={`/sales/${row.id}/edit`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit / Post
+                  </Link>
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(row)}>
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  Delete
+                </Button>
+              </>
+            ) : null}
+            {row.status === DocumentStatus.POSTED && Number(row.balance ?? 0) > 0.001 ? (
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/installments">Installments</Link>
               </Button>
             ) : null}
-            {row.status === DocumentStatus.POSTED ? (
+            {row.status === DocumentStatus.POSTED && canVoid ? (
               <Button size="sm" variant="destructive" onClick={() => setVoidTarget(row)}>
                 Void
               </Button>
@@ -112,21 +160,23 @@ export default function SalesPage() {
         ),
       },
     ],
-    [],
+    [canWrite, canVoid],
   );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sales"
-        description="Draft = not finalized. Post posts stock and accounting. Void reverses a posted invoice."
+        description="Create invoices, collect full or partial payment, then post. Remaining balances stay on the invoice and customer ledger — collect later via Installments."
         actions={
-          <Button asChild>
-            <Link href="/sales/new">
-              <Plus className="h-4 w-4" />
-              New Invoice
-            </Link>
-          </Button>
+          canWrite ? (
+            <Button asChild>
+              <Link href="/sales/new">
+                <Plus className="h-4 w-4" />
+                New Invoice
+              </Link>
+            </Button>
+          ) : null
         }
       />
 
@@ -149,22 +199,6 @@ export default function SalesPage() {
       />
 
       <ConfirmDialog
-        open={!!postTarget}
-        onOpenChange={(open) => !open && setPostTarget(null)}
-        title="Post invoice?"
-        description={
-          postTarget
-            ? `Post ${postTarget.number}? This finalizes stock and accounting. Payments already on the invoice (or none = credit/balance) are applied.`
-            : undefined
-        }
-        confirmLabel="Post"
-        isLoading={postMutation.isPending}
-        onConfirm={() => {
-          if (postTarget) postMutation.mutate(postTarget);
-        }}
-      />
-
-      <ConfirmDialog
         open={!!voidTarget}
         onOpenChange={(open) => !open && setVoidTarget(null)}
         title="Void invoice?"
@@ -178,6 +212,23 @@ export default function SalesPage() {
         isLoading={voidMutation.isPending}
         onConfirm={() => {
           if (voidTarget) voidMutation.mutate(voidTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete draft?"
+        description={
+          deleteTarget
+            ? `Delete draft ${deleteTarget.number}? This cannot be undone. Only unfinished drafts can be deleted.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
         }}
       />
     </div>

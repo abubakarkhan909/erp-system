@@ -1,8 +1,18 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { productSchema } from '@jewelry-erp/shared';
+import {
+  ProductOwnership,
+  productCreateSchema,
+  productSchema,
+  roundMoney,
+} from '@jewelry-erp/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { parsePagination, paginatedResult } from '../../common/utils/pagination';
+import { decimalStr, parsePagination, paginatedResult } from '../../common/utils/pagination';
 import { zodValidate } from '../../common/utils/zod-validate';
 import { serializeRecord } from '../../common/utils/serialize';
 
@@ -22,6 +32,9 @@ export class ProductsService {
         { sku: { contains: search } },
         { barcode: { contains: search } },
       ];
+    }
+    if (query.ownership === 'OWN' || query.ownership === 'SUPPLIER') {
+      where.ownership = query.ownership;
     }
 
     const orderBy: Prisma.ProductOrderByWithRelationInput = {};
@@ -68,7 +81,27 @@ export class ProductsService {
   }
 
   async create(body: unknown, userId?: string) {
-    const dto = zodValidate(productSchema, body);
+    const dto = zodValidate(productCreateSchema, body);
+    const ownership = dto.ownership ?? ProductOwnership.SUPPLIER;
+
+    let openingQty = '0.000';
+    let openingWeight = '0.000';
+
+    if (ownership === ProductOwnership.OWN) {
+      const qty = Number(dto.openingQty ?? 0);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new BadRequestException('Opening quantity is required for own products');
+      }
+      openingQty = roundMoney(String(qty));
+
+      if (dto.openingWeight != null && dto.openingWeight !== '' && parseFloat(dto.openingWeight) > 0) {
+        openingWeight = roundMoney(dto.openingWeight);
+      } else {
+        const unitNet = parseFloat(dto.netWeight ?? '0');
+        openingWeight =
+          unitNet > 0 ? roundMoney((unitNet * qty).toFixed(3)) : '0.000';
+      }
+    }
 
     try {
       const product = await this.prisma.$transaction(async (tx) => {
@@ -82,6 +115,7 @@ export class ProductsService {
             brandId: dto.brandId ?? null,
             productType: dto.productType,
             stockMode: dto.stockMode,
+            ownership,
             purityKarat: dto.purityKarat ?? null,
             grossWeight: dto.grossWeight ?? '0.000',
             netWeight: dto.netWeight ?? '0.000',
@@ -100,8 +134,26 @@ export class ProductsService {
         });
 
         await tx.stockBalance.create({
-          data: { productId: created.id },
+          data: {
+            productId: created.id,
+            onHandQty: openingQty,
+            onHandWeight: openingWeight,
+          },
         });
+
+        if (ownership === ProductOwnership.OWN && parseFloat(openingQty) > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: created.id,
+              type: 'ADJUSTMENT',
+              qty: openingQty,
+              weight: openingWeight,
+              refType: 'OWN_STOCK',
+              notes: 'Opening own / workshop stock on product create',
+              createdById: userId ?? null,
+            },
+          });
+        }
 
         return tx.product.findUniqueOrThrow({
           where: { id: created.id },
@@ -121,11 +173,15 @@ export class ProductsService {
   async update(id: string, body: unknown, userId?: string) {
     await this.findOne(id);
     const dto = zodValidate(productSchema.partial(), body);
+    // Never apply create-only opening fields on update
+    const { ...safe } = dto as Record<string, unknown>;
+    delete safe.openingQty;
+    delete safe.openingWeight;
 
     try {
       const product = await this.prisma.product.update({
         where: { id },
-        data: { ...dto, updatedById: userId },
+        data: { ...safe, updatedById: userId },
         include: { category: true, brand: true, stockBalance: true },
       });
       return this.serializeProduct(product);
@@ -157,6 +213,7 @@ export class ProductsService {
       category: product.category,
       brand: product.brand,
       stockBalance: product.stockBalance ? serializeRecord(product.stockBalance) : null,
+      onHandQty: product.stockBalance ? decimalStr(product.stockBalance.onHandQty) : '0.000',
     };
   }
 }

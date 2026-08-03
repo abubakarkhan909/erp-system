@@ -1,6 +1,6 @@
 appId: com.almas.jewelryerp
-productName: Al Mas Jewelry ERP
-copyright: Copyright © Al Mas Jewelry
+productName: Al Zahid Jewelry ERP
+copyright: Copyright © Al Zahid Jewelry
 
 directories:
   output: release
@@ -28,6 +28,11 @@ extraResources:
   - from: pack-stage/CLIENT-INSTALL.txt
     to: CLIENT-INSTALL.txt
 
+# Drop unused Chromium locale packs (~40MB)
+electronLanguages:
+  - en-US
+  - en-GB
+
 win:
   target:
     - target: nsis
@@ -40,4 +45,4 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Al Mas Jewelry ERP
+  shortcutName: Al Zahid Jewelry ERP

@@ -4,6 +4,7 @@ import {
   mulMoney,
   calcVat,
   calcGoldLine,
+  calcSaleLine,
   roundMoney,
   toMinorUnits,
   fromMinorUnits,
@@ -44,6 +45,31 @@ describe('OMR money helpers', () => {
     expect(line.lineNet).toBe('306.000');
     expect(line.vatAmount).toBe('15.300');
     expect(line.lineTotal).toBe('321.300');
+  });
+
+  it('calculates piece sale when weight is zero (qty × unitPrice)', () => {
+    const line = calcSaleLine({
+      quantity: 2,
+      netWeightGram: '0.000',
+      unitPrice: '150.000',
+      vatRatePercent: 5,
+    });
+    expect(line.pieceValue).toBe('300.000');
+    expect(line.lineNet).toBe('300.000');
+    expect(line.vatAmount).toBe('15.000');
+    expect(line.lineTotal).toBe('315.000');
+  });
+
+  it('ignores zero goldRateSnapshot and falls back to unitPrice for weight sales', () => {
+    const line = calcSaleLine({
+      quantity: 1,
+      netWeightGram: '10.000',
+      ratePerGram: '0.000',
+      unitPrice: '25.000',
+      vatRatePercent: 5,
+    });
+    expect(line.goldValue).toBe('250.000');
+    expect(line.lineTotal).toBe('262.500');
   });
 
   it('converts minor units', () => {

@@ -37,6 +37,13 @@ export class InventoryController {
     return this.inventoryService.getLowStock();
   }
 
+  /** Add own / workshop / opening stock (no supplier purchase). */
+  @Post('own-stock')
+  @RequirePermissions('inventory.write')
+  addOwnStock(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+    return this.inventoryService.addOwnStock(body, user.id);
+  }
+
   @Post('adjust')
   @RequirePermissions('inventory.write')
   adjust(

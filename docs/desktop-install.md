@@ -6,7 +6,7 @@ Copy **one file** to the client (USB / Google Drive):
 
 `apps/desktop/release/Al Mas Jewelry ERP-1.0.0-Setup.exe`
 
-(~400 MB after the packaging fix that includes Prisma/Next dependencies)
+**No MySQL / XAMPP / Node.js** on the client PC. The database is local SQLite.
 
 ## Build the installer (on your PC)
 
@@ -26,30 +26,23 @@ Installer path:
 
 | Step | Action |
 |------|--------|
-| 1 | Install **XAMPP** and start **MySQL** |
-| 2 | In phpMyAdmin create database **`esp_shop`** (empty) |
-| 3 | Run **Al Mas Jewelry ERP-1.0.0-Setup.exe** |
-| 4 | Open **Al Mas Jewelry ERP** from Desktop |
-| 5 | Login: **owner** / **Owner@12345** |
+| 1 | Run **Al Mas Jewelry ERP-1.0.0-Setup.exe** |
+| 2 | Open **Al Mas Jewelry ERP** from Desktop |
+| 3 | Login: **admin** / **admin@1234** (or **zahid** / **zahid@1234**) |
 
-First launch automatically creates config, runs migrations, and seeds the owner user.
+First launch automatically creates the local SQLite database, runs migrations, and seeds the owner user.
 
-**Node.js is not required** on the client PC. **MySQL/XAMPP is required.**
+Database file:
 
-### If you already installed an older Setup.exe
+`%APPDATA%\Al Mas Jewelry ERP\data\jewelry.db`
 
-The old installer was missing Prisma (`Prisma CLI missing…`).  
-Uninstall the old app → install this **new** Setup.exe → if setup still fails, delete `%APPDATA%\Al Mas Jewelry ERP\.db-ready` and open the app again.
+### If you already installed an older MySQL-based Setup.exe
 
-## If MySQL root has a password
+Uninstall the old app → install this **new** Setup.exe. The app upgrades `.env` from MySQL to SQLite automatically. If setup still fails, delete `%APPDATA%\Al Mas Jewelry ERP\.db-ready` and open the app again.
 
-Edit `%APPDATA%\Al Mas Jewelry ERP\.env`:
+## Backup
 
-```env
-DATABASE_URL="mysql://root:YOURPASSWORD@127.0.0.1:3306/esp_shop"
-```
-
-Delete `%APPDATA%\Al Mas Jewelry ERP\.db-ready` and open the app again.
+Use **Backup** in the app → **Create Backup** → **Download** the `.db` file to a USB drive. Use **Restore** if you need to bring data back (then restart the app).
 
 ## After first login
 

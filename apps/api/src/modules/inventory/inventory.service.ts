@@ -4,11 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, StockMovementType } from '@prisma/client';
-import { roundMoney } from '@jewelry-erp/shared';
+import { moneySchema, roundMoney } from '@jewelry-erp/shared';
+import { z } from 'zod';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decimalStr } from '../../common/utils/pagination';
 import { parsePagination, paginatedResult } from '../../common/utils/pagination';
 import { serializeMany, serializeRecord } from '../../common/utils/serialize';
+import { zodValidate } from '../../common/utils/zod-validate';
 
 export type AdjustStockInput = {
   productId: string;
@@ -27,6 +29,13 @@ const OUTBOUND_TYPES: StockMovementType[] = [
   'DAMAGE',
   'RESERVE',
 ];
+
+const ownStockSchema = z.object({
+  productId: z.string().cuid(),
+  qty: z.coerce.number().positive('Quantity must be greater than 0'),
+  weight: moneySchema.optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+});
 
 @Injectable()
 export class InventoryService {
@@ -66,7 +75,7 @@ export class InventoryService {
       weightDelta = roundMoney(`-${absWeight}`);
     }
 
-    const balance = await tx.stockBalance.upsert({
+    await tx.stockBalance.upsert({
       where: { productId: input.productId },
       create: {
         productId: input.productId,
@@ -83,8 +92,12 @@ export class InventoryService {
       },
     });
 
-    const onHandQty = parseFloat(decimalStr(balance.onHandQty));
-    const onHandWeight = parseFloat(decimalStr(balance.onHandWeight));
+    // Re-read after increment so validation uses the new balance
+    const fresh = await tx.stockBalance.findUniqueOrThrow({
+      where: { productId: input.productId },
+    });
+    const onHandQty = parseFloat(decimalStr(fresh.onHandQty));
+    const onHandWeight = parseFloat(decimalStr(fresh.onHandWeight));
     if (onHandQty < -0.0001 || onHandWeight < -0.0001) {
       throw new BadRequestException('Insufficient stock');
     }
@@ -102,7 +115,59 @@ export class InventoryService {
       },
     });
 
-    return { balance, movement };
+    return { balance: fresh, movement };
+  }
+
+  /**
+   * Add own / opening / workshop stock (not purchased from a supplier).
+   * Increases on-hand qty and weight; records an ADJUSTMENT with refType OWN_STOCK.
+   */
+  async addOwnStock(body: unknown, userId?: string) {
+    const dto = zodValidate(ownStockSchema, body);
+
+    const product = await this.prisma.product.findFirst({
+      where: { id: dto.productId, deletedAt: null },
+      include: { stockBalance: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const qty = roundMoney(String(dto.qty));
+    let weight = dto.weight != null && dto.weight !== '' ? roundMoney(dto.weight) : null;
+
+    // Default weight = qty × product net weight (jewelry pcs)
+    if (weight == null || parseFloat(weight) <= 0) {
+      const unitNet = parseFloat(decimalStr(product.netWeight));
+      if (unitNet > 0) {
+        weight = roundMoney((unitNet * parseFloat(qty)).toFixed(3));
+      } else {
+        weight = '0.000';
+      }
+    }
+
+    const result = await this.prisma.$transaction((tx) =>
+      this.adjustStock(tx, {
+        productId: dto.productId,
+        type: 'ADJUSTMENT',
+        qty,
+        weight,
+        refType: 'OWN_STOCK',
+        notes: dto.notes?.trim() || 'Own / opening stock (workshop production)',
+        createdById: userId,
+      }),
+    );
+
+    return {
+      product: {
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+      },
+      addedQty: qty,
+      addedWeight: weight,
+      onHandQty: decimalStr(result.balance.onHandQty),
+      onHandWeight: decimalStr(result.balance.onHandWeight),
+      movementId: result.movement.id,
+    };
   }
 
   async listMovements(query: Record<string, unknown>) {
@@ -137,9 +202,12 @@ export class InventoryService {
       query as Parameters<typeof parsePagination>[0],
     );
 
-    const where: Prisma.StockBalanceWhereInput = {};
+    const where: Prisma.StockBalanceWhereInput = {
+      product: { deletedAt: null },
+    };
     if (search) {
       where.product = {
+        deletedAt: null,
         OR: [
           { name: { contains: search } },
           { sku: { contains: search } },
@@ -159,6 +227,8 @@ export class InventoryService {
               id: true,
               sku: true,
               name: true,
+              netWeight: true,
+              ownership: true,
               minStockQty: true,
               minStockWeight: true,
             },

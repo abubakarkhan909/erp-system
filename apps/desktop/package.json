@@ -1,8 +1,9 @@
 {
   "name": "@jewelry-erp/desktop",
+  "productName": "Al Zahid Jewelry ERP",
   "version": "1.0.0",
   "private": true,
-  "description": "Electron desktop shell for Al Mas Jewelry ERP",
+  "description": "Electron desktop shell for Al Zahid Jewelry ERP",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc -p tsconfig.json",

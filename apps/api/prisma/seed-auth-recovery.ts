@@ -9,7 +9,8 @@ const prisma = new PrismaClient();
 const ROUNDS = 10;
 
 const DEMO_CREDENTIALS: Record<string, string> = {
-  owner: 'Owner@12345',
+  admin: 'admin@1234',
+  zahid: 'zahid@1234',
   manager: 'Manager@123',
   cashier: 'Cashier@123',
   salesman: 'Salesman@123',

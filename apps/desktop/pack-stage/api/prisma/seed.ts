@@ -135,21 +135,68 @@ async function main() {
     }
   }
 
-  const username = process.env.SEED_OWNER_USERNAME || 'owner';
-  const password = process.env.SEED_OWNER_PASSWORD || 'Owner@12345';
-  const hash = await bcrypt.hash(password, 10);
   const ownerRole = await prisma.role.findUniqueOrThrow({ where: { code: 'OWNER' } });
 
-  const owner = await prisma.user.upsert({
-    where: { username },
-    update: {},
-    create: {
-      username,
-      fullName: 'Shop Owner',
-      email: 'owner@jewelry.local',
-      passwordHash: hash,
-      roles: { create: [{ roleId: ownerRole.id }] },
+  /** Fixed shop admin accounts (always ensured on every seed). */
+  const ADMIN_USERS = [
+    {
+      username: 'admin',
+      password: 'admin@1234',
+      fullName: 'Administrator',
+      email: 'admin@jewelry.local',
     },
+    {
+      username: 'zahid',
+      password: 'zahid@1234',
+      fullName: 'Zahid',
+      email: 'zahid@jewelry.local',
+    },
+  ] as const;
+
+  let primaryAdminId = '';
+  for (const u of ADMIN_USERS) {
+    const hash = await bcrypt.hash(u.password, 10);
+    const user = await prisma.user.upsert({
+      where: { username: u.username },
+      update: {
+        fullName: u.fullName,
+        email: u.email,
+        passwordHash: hash,
+        passwordHint: u.password,
+        isActive: true,
+        deletedAt: null,
+      },
+      create: {
+        username: u.username,
+        fullName: u.fullName,
+        email: u.email,
+        passwordHash: hash,
+        passwordHint: u.password,
+        roles: { create: [{ roleId: ownerRole.id }] },
+      },
+    });
+
+    const hasOwnerRole = await prisma.userRole.findFirst({
+      where: { userId: user.id, roleId: ownerRole.id },
+    });
+    if (!hasOwnerRole) {
+      await prisma.userRole.create({
+        data: { userId: user.id, roleId: ownerRole.id },
+      });
+    }
+
+    if (u.username === 'admin') primaryAdminId = user.id;
+    console.log(`Admin login: ${u.username} / ${u.password}`);
+  }
+
+  // Disable legacy seed user so it is not confused with the new admins
+  await prisma.user.updateMany({
+    where: { username: 'owner' },
+    data: { isActive: false },
+  });
+
+  const owner = await prisma.user.findUniqueOrThrow({
+    where: { id: primaryAdminId },
   });
 
   await prisma.company.upsert({
@@ -157,10 +204,10 @@ async function main() {
     update: {},
     create: {
       id: 'seed-company',
-      name: 'Al Mas Jewelry',
+      name: 'Al Zahid Jewelry',
       address: 'Muttrah, Muscat, Sultanate of Oman',
       phone: '+968 2400 0000',
-      email: 'info@almasjewelry.om',
+      email: 'info@alzahidjewelry.om',
       crNumber: 'CR-000000',
       vatNumber: 'OM1234567890',
       currency: 'OMR',
@@ -194,7 +241,7 @@ async function main() {
   }
 
   const now = new Date();
-  // Use UTC midnight so upsert matches MySQL DATE/DateTime uniquely across timezones
+  // Use UTC midnight so upsert matches date uniqueness across timezones
   const rateDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const rates: Array<{ karat: GoldKarat; rate: string }> = [
     { karat: 'K18', rate: '22.500' },
@@ -258,8 +305,8 @@ async function main() {
     create: { year, month, status: 'OPEN' },
   });
 
-  console.log(`Owner login: ${username} / ${password}`);
   console.log('Base seed complete.');
+  console.log('Login with: admin / admin@1234  or  zahid / zahid@1234');
 
   // Demo data is optional — never block client first-run installers
   if (process.env.SEED_DEMO === '1' || process.env.SEED_DEMO === 'true') {

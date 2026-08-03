@@ -8,7 +8,7 @@ Electron main
   ├─ loads Next.js UI
   └─ IPC: print, backup folder picker, app version
 
-Next.js renderer ──HTTP JWT──▶ NestJS ──Prisma──▶ MySQL
+Next.js renderer ──HTTP JWT──▶ NestJS ──Prisma──▶ SQLite (local file)
 ```
 
 Business rules never live in Electron IPC or the frontend. The UI is a client of the REST API only.
@@ -37,4 +37,4 @@ Posted documents run inside `prisma.$transaction` and update stock, party balanc
 
 ## Offline-first
 
-Local MySQL + local uploads under `data/`. Cloud migration keeps the same NestJS/Next.js code with adapter swaps for storage and mail.
+Local SQLite file + local uploads under AppData (`data/`). Cloud migration keeps the same NestJS/Next.js code with adapter swaps for storage and mail.

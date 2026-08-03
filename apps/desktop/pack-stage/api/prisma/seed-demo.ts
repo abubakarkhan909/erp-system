@@ -155,8 +155,10 @@ async function postJournal(opts: {
 export async function seedDemoData() {
   console.log('Seeding demo data for all modules...');
 
-  const owner = await prisma.user.findFirst({ where: { username: 'owner' } });
-  if (!owner) throw new Error('Run base seed first (owner user missing)');
+  const owner =
+    (await prisma.user.findFirst({ where: { username: 'admin' } })) ||
+    (await prisma.user.findFirst({ where: { username: 'owner' } }));
+  if (!owner) throw new Error('Run base seed first (admin user missing)');
 
   const existingDemo = await prisma.customer.findFirst({ where: { notes: { contains: '[DEMO]' } } });
   if (existingDemo) {
@@ -179,7 +181,7 @@ export async function seedDemoData() {
     create: { year, month, status: 'OPEN' },
   });
 
-  // Gold rates — idempotent upserts with UTC midnight (avoids MySQL DATE timezone mismatch)
+  // Gold rates — idempotent upserts with UTC midnight (avoids DATE timezone mismatch)
   const rateDay = (d: Date) =>
     new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const rateRows: Array<{ date: Date; karat: GoldKarat; rate: string }> = [
@@ -226,9 +228,9 @@ export async function seedDemoData() {
     create: { name: '[DEMO] Earrings' },
   });
   const brandHouse = await prisma.brand.upsert({
-    where: { name: '[DEMO] Al Mas House' },
+    where: { name: '[DEMO] Al Zahid House' },
     update: {},
-    create: { name: '[DEMO] Al Mas House' },
+    create: { name: '[DEMO] Al Zahid House' },
   });
   const brandImport = await prisma.brand.upsert({
     where: { name: '[DEMO] Dubai Gold' },
@@ -1401,7 +1403,8 @@ export async function seedDemoData() {
 
   console.log('');
   console.log('========== DEMO LOGIN ACCOUNTS ==========');
-  console.log('owner      / Owner@12345     (Owner)');
+  console.log('admin      / admin@1234     (Owner / admin)');
+  console.log('zahid      / zahid@1234     (Owner / admin)');
   console.log('manager    / Manager@123     (Manager)');
   console.log('cashier    / Cashier@123     (Cashier)');
   console.log('salesman   / Salesman@123    (Salesman)');

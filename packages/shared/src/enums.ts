@@ -82,6 +82,12 @@ export enum StockMode {
   BOTH = 'BOTH',
 }
 
+/** Where stock for this product normally comes from */
+export enum ProductOwnership {
+  OWN = 'OWN',
+  SUPPLIER = 'SUPPLIER',
+}
+
 export enum StockMovementType {
   PURCHASE = 'PURCHASE',
   SALE = 'SALE',
