@@ -31,7 +31,7 @@ Backup (important)
 Use Backup in the app to copy the database file, then Download it to a USB drive.
 If the PC dies, Restore that .db backup (or copy jewelry.db back into the AppData folder).
 
-If first launch fails
----------------------
-Delete this file and open the app again:
+If database setup fails
+-----------------------
+Delete this file and open the app again (forces a clean migrate/seed retry):
   %APPDATA%\Al Zahid Jewelry ERP\.db-ready

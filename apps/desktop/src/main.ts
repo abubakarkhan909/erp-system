@@ -304,7 +304,7 @@ function runSeed(apiDir: string, env: NodeJS.ProcessEnv): { ok: boolean; output:
   return { ok: result.status === 0, output };
 }
 
-/** First launch + seed-version upgrades: migrate + seed admin/zahid. */
+/** Apply pending Prisma migrations every launch; seed only when seed-version flag is missing. */
 function ensureDatabaseReady(apiDir: string, envFile: string): { ok: boolean; message: string } {
   const userData = app.getPath('userData');
   const dbReady = path.join(userData, '.db-ready');
@@ -317,27 +317,22 @@ function ensureDatabaseReady(apiDir: string, envFile: string): { ok: boolean; me
     DOTENV_CONFIG_PATH: envFile,
   };
 
-  const needsMigrate = !fs.existsSync(dbReady);
   const needsSeed = !fs.existsSync(seedFlag);
 
-  if (!needsMigrate && !needsSeed) {
-    return { ok: true, message: 'Database already prepared' };
+  // Always deploy so app updates can add columns (e.g. Product.ownership) without
+  // requiring the user to delete .db-ready. Idempotent when nothing is pending.
+  const migrate = runPrisma(['migrate', 'deploy', '--schema=prisma/schema.prisma'], apiDir, env);
+  if (!migrate.ok) {
+    return {
+      ok: false,
+      message:
+        'Database setup failed (migrate).\n\n' +
+        'Delete this folder and reopen the app:\n' +
+        `%APPDATA%\\${PRODUCT}\n\n` +
+        migrate.output.slice(-800),
+    };
   }
-
-  if (needsMigrate) {
-    const migrate = runPrisma(['migrate', 'deploy', '--schema=prisma/schema.prisma'], apiDir, env);
-    if (!migrate.ok) {
-      return {
-        ok: false,
-        message:
-          'Database setup failed (migrate).\n\n' +
-          'Delete this folder and reopen the app:\n' +
-          `%APPDATA%\\${PRODUCT}\n\n` +
-          migrate.output.slice(-800),
-      };
-    }
-    fs.writeFileSync(dbReady, new Date().toISOString(), 'utf8');
-  }
+  fs.writeFileSync(dbReady, new Date().toISOString(), 'utf8');
 
   if (needsSeed) {
     const seed = runSeed(apiDir, env);
